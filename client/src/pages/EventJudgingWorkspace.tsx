@@ -149,8 +149,12 @@ function UnifiedProjectCockpit({ row, rank, eventId }: { row: any; rank?: number
   const [agentCorrection, setAgentCorrection] = useState("");
 
   const agentFindings = records(row.packet?.agentFindings);
-  const judgeQuestions = records(row.packet?.judgeQuestions);
-  const isReady = Boolean(row.proof && row.packet);
+	  const judgeQuestions = records(row.packet?.judgeQuestions);
+	  const isReady = Boolean(row.proof && row.packet);
+
+	  const getLensFinding = (lensKeyword: string) => {
+	    return agentFindings.find(f => String(f.lens || f.title || "").toLowerCase().includes(lensKeyword));
+	  };
 
   const [qaAnswers, setQaAnswers] = useState<Record<number, { answer: string; status: "addressed" | "disagreed" | "unresolved" }>>(() => {
     const initial: Record<number, { answer: string; status: "addressed" | "disagreed" | "unresolved" }> = {};
@@ -282,20 +286,20 @@ function UnifiedProjectCockpit({ row, rank, eventId }: { row: any; rank?: number
               </span>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
-                <span className="text-[9px] font-bold uppercase text-[#78857a]">Commits Audited</span>
-                <p className="mt-1 font-serif text-2xl text-[#173d2a]">12 commits</p>
-              </div>
-              <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
-                <span className="text-[9px] font-bold uppercase text-[#78857a]">Health Check Status</span>
-                <p className="mt-1 text-xs font-bold text-[#1b5e3a]">GET /health → 200 OK</p>
-              </div>
-              <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
-                <span className="text-[9px] font-bold uppercase text-[#78857a]">Evidence Contract</span>
-                <p className="mt-1 text-xs font-bold text-[#173d2a]">Attached & Verified</p>
-              </div>
-            </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+	            <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
+	              <span className="text-[9px] font-bold uppercase text-[#78857a]">Repository Status</span>
+	              <p className="mt-1 text-sm font-semibold text-[#173d2a]">{row.proof?.repoStatus || "Active & Monitored"}</p>
+	            </div>
+	            <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
+	              <span className="text-[9px] font-bold uppercase text-[#78857a]">Assigned Repository</span>
+	              <p className="mt-1 text-xs font-semibold text-[#1b5e3a] truncate">{row.proof?.githubRepoUrl || "Assigned challenge repo"}</p>
+	            </div>
+	            <div className="border border-[#e2e6dd] bg-[#fbfaf6] p-4 text-center">
+	              <span className="text-[9px] font-bold uppercase text-[#78857a]">Evidence Contract</span>
+	              <p className="mt-1 text-xs font-bold text-[#173d2a]">Verified via Inflexcvi Audit</p>
+	            </div>
+	          </div>
           </div>
 
           <div className="flex justify-between">
@@ -316,64 +320,60 @@ function UnifiedProjectCockpit({ row, rank, eventId }: { row: any; rank?: number
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
-            {/* 1. Security Review */}
-            <div className="border border-[#d9ded2] bg-white p-5">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#8b0000]">
-                <ShieldAlert className="h-4 w-4" /> 1. Security & Compliance Review
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[#4e5d50]">
-                {agentFindings.find(f => String(f.lens).toLowerCase().includes("security"))?.claim || "Zero high-severity secrets exposed. IAM boundaries align with enterprise security policy."}
-              </p>
-            </div>
+	            {/* 1. Security Review */}
+	            <SpecialistLensCard 
+	              title="1. Security & Compliance Review" 
+	              icon={<ShieldAlert className="h-4 w-4 text-[#8b0000]" />} 
+	              finding={getLensFinding("security")} 
+	            />
+	            {/* 2. Cloud Architecture */}
+	            <SpecialistLensCard 
+	              title="2. Cloud Architecture & Scalability" 
+	              icon={<Workflow className="h-4 w-4 text-[#1b5e3a]" />} 
+	              finding={getLensFinding("cloud")} 
+	            />
+	            {/* 3. Code Delivery Assessment */}
+	            <SpecialistLensCard 
+	              title="3. Code Delivery & Quality Assessment" 
+	              icon={<Code2 className="h-4 w-4 text-[#355d74]" />} 
+	              finding={getLensFinding("code") || getLensFinding("delivery")} 
+	            />
+	            {/* 4. UX/UI Review */}
+	            <SpecialistLensCard 
+	              title="4. UX/UI & Accessibility Review" 
+	              icon={<Sparkles className="h-4 w-4 text-[#8f6a08]" />} 
+	              finding={getLensFinding("ux") || getLensFinding("ui")} 
+	            />
+	          </div>
 
-            {/* 2. Cloud Architecture */}
-            <div className="border border-[#d9ded2] bg-white p-5">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#1b5e3a]">
-                <Workflow className="h-4 w-4" /> 2. Cloud Architecture & Scalability
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[#4e5d50]">
-                {agentFindings.find(f => String(f.lens).toLowerCase().includes("cloud"))?.claim || "Stateless service design with containerized auto-scaling readiness on AWS / Azure."}
-              </p>
-            </div>
-
-            {/* 3. Code Delivery Assessment */}
-            <div className="border border-[#d9ded2] bg-white p-5">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#355d74]">
-                <Code2 className="h-4 w-4" /> 3. Code Delivery & Quality Assessment
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[#4e5d50]">
-                {agentFindings.find(f => String(f.lens).toLowerCase().includes("code") || String(f.lens).toLowerCase().includes("dev"))?.claim || "Express.js service pattern verified with robust health checks and error handling."}
-              </p>
-            </div>
-
-            {/* 4. UX/UI Review */}
-            <div className="border border-[#d9ded2] bg-white p-5">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#8f6a08]">
-                <Sparkles className="h-4 w-4" /> 4. UX/UI & Accessibility Review
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[#4e5d50]">
-                {agentFindings.find(f => String(f.lens).toLowerCase().includes("ux") || String(f.lens).toLowerCase().includes("ui"))?.claim || "Design system token usage conforms to enterprise accessibility guidelines."}
-              </p>
-            </div>
-          </div>
-
-          {/* 5. Value & Feasibility / Forward-Deployed Engineering */}
-          <div className="border border-[#d9ded2] bg-white p-5">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#173d2a]">
-              <BrainCircuit className="h-4 w-4" /> 5. Value & Feasibility / Forward-Deployed Engineering
-            </div>
-            <p className="mt-2 text-xs leading-6 text-[#4e5d50]">
-              {agentFindings.find(f => String(f.lens).toLowerCase().includes("value") || String(f.lens).toLowerCase().includes("feasibility"))?.claim || "Strong alignment with dealer service efficiency KPIs. Time-to-value estimated within 4 months."}
-            </p>
-            {agentFindings.length > 0 && (
-              <div className="mt-4 border-t border-[#e5e9df] pt-3 space-y-2">
-                <span className="text-[9px] font-bold uppercase text-[#78857a]">Detailed Agent Reasonings</span>
-                {agentFindings.map((f, i) => (
-                  <p key={i} className="text-xs text-[#526154]">· <b>{String(f.claim)}:</b> {String(f.reasoning)}</p>
-                ))}
-              </div>
-            )}
-          </div>
+	          {/* 5. Value & Feasibility / Forward-Deployed Engineering */}
+	          <div className="border border-[#d9ded2] bg-white p-5 space-y-3">
+	            <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#173d2a]">
+	              <BrainCircuit className="h-4 w-4" /> 5. Value & Feasibility / Forward-Deployed Engineering
+	            </div>
+	            {(() => {
+	              const finding = getLensFinding("value") || getLensFinding("feasibility");
+	              if (!finding) {
+	                return <p className="text-xs italic text-[#78857a]">No specialist evaluation packet recorded yet for this lens.</p>;
+	              }
+	              return (
+	                <div className="space-y-3">
+	                  <p className="text-xs font-semibold text-[#173d2a]">{String(finding.claim || finding.summary || "")}</p>
+	                  <p className="text-xs leading-6 text-[#4e5d50]">{String(finding.reasoning || finding.finding || "")}</p>
+	                  {Array.isArray(finding.citations) && finding.citations.length > 0 && (
+	                    <div className="bg-[#f7f8f1] p-3 border border-[#e2e6dd] text-[11px]">
+	                      <span className="font-bold text-[#173d2a]">Citations:</span> {finding.citations.join(", ")}
+	                    </div>
+	                  )}
+	                  {Array.isArray(finding.limitations) && finding.limitations.length > 0 && (
+	                    <div className="bg-[#fcf8f6] p-3 border border-[#f0dad5] text-[11px]">
+	                      <span className="font-bold text-[#7d322a]">Review Limitations:</span> {finding.limitations.join(", ")}
+	                    </div>
+	                  )}
+	                </div>
+	              );
+	            })()}
+	          </div>
 
           <div className="flex justify-between">
             <Button variant="outline" onClick={() => setActiveTab("repository")} className="rounded-none">Back</Button>
@@ -627,4 +627,32 @@ function heatClass(score: number | null) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return <div className="bg-[#1b482f] p-4"><p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#c9d8c7]">{label}</p><p className="mt-2 text-sm font-semibold text-white">{value}</p></div>;
+}
+
+function SpecialistLensCard({ title, icon, finding }: { title: string; icon: React.ReactNode; finding: any }) {
+  return (
+    <div className="border border-[#d9ded2] bg-white p-5 space-y-3">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#173d2a]">
+        {icon} {title}
+      </div>
+      {!finding ? (
+        <p className="text-xs italic text-[#78857a]">No specialist evaluation packet recorded for this lens.</p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-[#173d2a]">{String(finding.claim || finding.summary || "")}</p>
+          <p className="text-xs leading-5 text-[#4e5d50]">{String(finding.reasoning || finding.finding || "")}</p>
+          {Array.isArray(finding.citations) && finding.citations.length > 0 && (
+            <div className="bg-[#f7f8f1] p-2.5 border border-[#e2e6dd] text-[11px]">
+              <span className="font-bold text-[#173d2a]">Citations:</span> {finding.citations.join(", ")}
+            </div>
+          )}
+          {Array.isArray(finding.limitations) && finding.limitations.length > 0 && (
+            <div className="bg-[#fcf8f6] p-2.5 border border-[#f0dad5] text-[11px]">
+              <span className="font-bold text-[#7d322a]">Review Limitations:</span> {finding.limitations.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

@@ -1,0 +1,331 @@
+When processing high volumes of hackathon submissions, hitting GitHub’s REST API rate limits (5,000 requests/hour for authenticated users or 60/hour for unauthenticated users) is a common bottleneck.
+
+To overcome this, you can implement a **hybrid fallback architecture**:
+
+1. **Primary Route:** Fast, lightweight GitHub REST API tree traversal.
+2. **Fallback Route:** Shallow `git clone --depth 1` to a local temporary directory.
+3. **Enhancement:** Using Python's native `ast` module (or `tree-sitter` for multi-language repos) to extract AST function signatures and import trees, producing an audit context string without exhausting external API quotas.
+
+---
+
+### System Architecture Flow
+
+```
+                     ┌────────────────────────────┐
+                     │ Incoming Inspection Request│
+                     └─────────────┬──────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │ Attempt GitHub REST API     │
+                    └──────────────┬──────────────┘
+                                   │
+                       ┌───────────┴───────────┐
+                       │ Hit Rate Limit (403)? │
+                       └─────┬───────────┬─────┘
+                     NO      │           │ YES
+             ┌───────────────┘           └───────────────┐
+             ▼                                           ▼
+┌─────────────────────────┐                 ┌─────────────────────────┐
+│ Stream via GitHub REST  │                 │ Shallow Git Clone       │
+│ File Traversal          │                 │ (git clone --depth 1)   │
+└────────────┬────────────┘                 └────────────┬────────────┘
+             │                                           │
+             │                                           ▼
+             │                              ┌─────────────────────────┐
+             │                              │ AST Code & Import Parser│
+             │                              └────────────┬────────────┘
+             │                                           │
+             └───────────────────┬───────────────────────┘
+                                 ▼
+                     ┌────────────────────────┐
+                     │ Pass Context String to │
+                     │ Code Auditor Agent     │
+                     └────────────────────────┘
+
+```
+
+---
+
+### Complete Python Script with Local Clone & AST Fallback
+
+The following script attempts the GitHub REST API first. If a `GithubException` (specifically status 403 / rate limit exceeded) occurs, it automatically triggers `git clone --depth 1` into a temporary directory, parses Python files into AST summaries, and feeds the resulting context into the Instructor pipeline.
+
+#### Prerequisites
+
+```bash
+pip install PyGithub instructor openai pydantic
+
+```
+
+#### Script: `robust_github_auditor.py`
+
+```python
+import ast
+import os
+import shutil
+import subprocess
+import tempfile
+from enum import Enum
+from typing import List, Optional, Tuple
+from pydantic import BaseModel, Field
+import instructor
+from openai import OpenAI
+from github import Github, GithubException
+
+# Initialize Clients
+openai_client = instructor.from_openai(OpenAI())
+gh_token = os.getenv("GITHUB_TOKEN")
+gh_client = Github(gh_token) if gh_token else Github()
+
+# =====================================================================
+# 1. AST PARSER HELPER FOR LOCAL REPOSITORIES
+# =====================================================================
+
+def parse_python_ast(file_path: str) -> str:
+    """
+    Parses a local Python file using standard library AST to extract:
+    - Imported modules (dependencies)
+    - Defined functions, classes, and decoratored endpoints
+    - Inline docstrings
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            code = f.read()
+        
+        tree = ast.parse(code)
+        imports = []
+        definitions = []
+
+        for node in ast.walk(tree):
+            # Capture import statements
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                imports.append(node.module if node.module else "")
+
+            # Capture function & async function definitions
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                decorators = [
+                    ast.unparse(d) for d in node.decorator_list if hasattr(ast, "unparse")
+                ]
+                dec_str = f" [@{', @'.join(decorators)}]" if decorators else ""
+                definitions.append(f"Line {node.lineno}: def {node.name}{dec_str}")
+
+            # Capture class definitions
+            elif isinstance(node, ast.ClassDef):
+                definitions.append(f"Line {node.lineno}: class {node.name}")
+
+        ast_summary = (
+            f"FILE: {file_path}\n"
+            f"  [AST Imports]: {', '.join(set(filter(None, imports)))}\n"
+            f"  [AST Declarations]:\n    " + "\n    ".join(definitions[:30]) + "\n"
+        )
+        return ast_summary
+
+    except SyntaxError:
+        # Fallback for non-valid Python syntax
+        return f"FILE: {file_path} (Failed to parse AST - Syntax Error)\n"
+    except Exception as e:
+        return f"FILE: {file_path} (AST Parsing Error: {str(e)})\n"
+
+
+# =====================================================================
+# 2. LOCAL CLONE & REPO EXTRACTION FALLBACK
+# =====================================================================
+
+def extract_via_local_clone(repo_full_name: str) -> Tuple[str, dict]:
+    """
+    Fallback method: Executes shallow git clone (--depth 1) into a temporary
+    directory, then scans local files using AST and file reads.
+    """
+    temp_dir = tempfile.mkdtemp(prefix="hackathon_audit_")
+    repo_url = f"https://github.com/{repo_full_name}.git"
+    
+    # If a GITHUB_TOKEN exists, inject it into the clone URL to bypass auth rate limits
+    if gh_token:
+        repo_url = f"https://x-access-token:{gh_token}@github.com/{repo_full_name}.git"
+
+    try:
+        print(f"  [Fallback] Shallow cloning {repo_full_name} into temporary dir: {temp_dir}...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, temp_dir],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        file_summaries = []
+        ignored_dirs = {".git", "node_modules", "venv", "__pycache__", "dist", "build"}
+        files_scanned = 0
+
+        for root, dirs, files in os.walk(temp_dir):
+            # Skip ignored directories
+            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            
+            for file_name in files:
+                if files_scanned >= 40:
+                    break
+                
+                rel_path = os.path.relpath(os.path.join(root, file_name), temp_dir)
+                full_path = os.path.join(root, file_name)
+
+                # 1. If Python file, extract rich AST context
+                if file_name.endswith(".py"):
+                    ast_data = parse_python_ast(full_path)
+                    file_summaries.append(ast_data)
+                    files_scanned += 1
+                
+                # 2. If configuration/manifest file, read raw content
+                elif file_name in {"package.json", "requirements.txt", "Cargo.toml", "Dockerfile", "README.md"}:
+                    try:
+                        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read(4000)  # Cap at 4k chars
+                        file_summaries.append(f"FILE: {rel_path}\n{content}\n")
+                        files_scanned += 1
+                    except Exception:
+                        continue
+
+        formatted_context = (
+            f"REPO: {repo_full_name} (EXTRACTION METHOD: LOCAL CLONE FALLBACK)\n"
+            f"FILES SCANNED: {files_scanned}\n"
+            "--------------------------------------------------\n" +
+            "\n".join(file_summaries)
+        )
+        
+        metadata = {
+            "extraction_method": "LOCAL_GIT_CLONE",
+            "files_inspected": files_scanned
+        }
+        return formatted_context, metadata
+
+    finally:
+        # Always clean up temporary directories
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# =====================================================================
+# 3. HYBRID EXTRACTION ROUTER
+# =====================================================================
+
+def fetch_repository_context(repo_full_name: str) -> Tuple[str, dict]:
+    """
+    Attempts GitHub REST API first. If Rate Limit (403/429) or Network Error occurs,
+    automatically falls back to local shallow git cloning.
+    """
+    try:
+        print(f"🌐 [Attempt 1] Fetching {repo_full_name} via GitHub REST API...")
+        repo = gh_client.get_repo(repo_full_name)
+        
+        # Simple test call to check rate limits before full traversal
+        commits = list(repo.get_commits()[:10])
+        
+        # Traverse top-level files
+        file_contents = []
+        contents = repo.get_contents("")
+        file_count = 0
+
+        while contents and file_count < 30:
+            file_item = contents.pop(0)
+            if file_item.type == "dir" and file_item.name not in {"node_modules", ".git"}:
+                try:
+                    contents.extend(repo.get_contents(file_item.path))
+                except GithubException:
+                    continue
+            elif file_item.type == "file" and not file_item.name.endswith((".png", ".jpg", ".zip", ".lock")):
+                try:
+                    raw_text = file_item.decoded_content.decode("utf-8", errors="ignore")[:4000]
+                    file_contents.append(f"FILE: {file_item.path}\n{raw_text}\n")
+                    file_count += 1
+                except Exception:
+                    continue
+
+        formatted_context = (
+            f"REPO: {repo.full_name} (EXTRACTION METHOD: GITHUB_REST_API)\n"
+            f"TOTAL COMMITS: {len(commits)}\n"
+            "--------------------------------------------------\n" +
+            "\n".join(file_contents)
+        )
+        
+        metadata = {
+            "extraction_method": "GITHUB_REST_API",
+            "files_inspected": file_count
+        }
+        return formatted_context, metadata
+
+    except GithubException as e:
+        # Catch Rate Limit or Forbidden errors
+        if e.status in (403, 429) or "rate limit" in str(e).lower():
+            print(f"⚠️  GitHub API Rate Limit Triggered (HTTP {e.status}). Switching to Fallback Route...")
+            return extract_via_local_clone(repo_full_name)
+        else:
+            raise e
+    except Exception as e:
+        print(f"⚠️  API Request failed ({str(e)}). Switching to Fallback Route...")
+        return extract_via_local_clone(repo_full_name)
+
+
+# =====================================================================
+# 4. INSTRUCTOR AGENT SCHEMAS & EXECUTION
+# =====================================================================
+
+class ImplementationStatus(str, Enum):
+    REAL_LOGIC = "REAL_LOGIC"
+    MOCKED_DATA = "MOCKED_DATA"
+    EMPTY_STUB = "EMPTY_STUB"
+
+class TechnicalFinding(BaseModel):
+    feature_category: str
+    implementation_status: ImplementationStatus
+    file_path: str
+    evidence_snippet: str
+
+class CodeAuditorReport(BaseModel):
+    technical_findings: List[TechnicalFinding]
+    technical_execution_score: float = Field(..., ge=0.0, le=1.0)
+
+
+def run_code_auditor(codebase_context: str) -> CodeAuditorReport:
+    system_prompt = (
+        "You are an expert static analysis security and code inspection agent.\n"
+        "Inspect the repository context (which may contain AST function summaries or raw file contents) "
+        "to determine technical completeness, verifying actual implementation vs hardcoded mocks."
+    )
+
+    return openai_client.chat.completions.create(
+        model="gpt-4o",
+        response_model=CodeAuditorReport,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Audit the following codebase context:\n\n{codebase_context}"}
+        ],
+        temperature=0.1
+    )
+
+
+if __name__ == "__main__":
+    TARGET_REPO = "octocat/Hello-World"  # Replace with actual hackathon repo URL/slug
+
+    print(f"🚀 Initiating Hybrid Audit Pipeline for '{TARGET_REPO}'...")
+    context_str, meta = fetch_repository_context(TARGET_REPO)
+    
+    print(f"✅ Extraction Successful via [{meta['extraction_method']}]. Inspected {meta['files_inspected']} files.\n")
+
+    print("🤖 Executing Code Auditor Agent...")
+    report = run_code_auditor(context_str)
+    
+    print("\n=== AUDIT REPORT ===")
+    print(f"Technical Execution Score: {report.technical_execution_score}")
+    for finding in report.technical_findings:
+        print(f"• [{finding.implementation_status.value}] {finding.feature_category} ({finding.file_path})")
+
+```
+
+---
+
+### Key Operational Improvements in this Approach
+
+1. **`--depth 1` Shallow Clones:** Avoids pulling the entire Git history/LFS objects, downloading only the single latest commit payload (usually `< 2 seconds`).
+2. **AST Noise Reduction:** The `parse_python_ast` function condenses a 500-line Python file into a 15-line summary of its imports and function signatures (`Line 42: def search_vectors [@app.get('/search')]`), saving LLM context tokens while preserving technical evidence.
+3. **Automatic Cleanup:** Utilizes Python's `tempfile` and `shutil.rmtree` in a `finally` block to prevent disk bloat on the worker server.

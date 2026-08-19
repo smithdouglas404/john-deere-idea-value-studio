@@ -1,0 +1,422 @@
+To scale this system for high-volume production, replacing FastAPI’s in-memory `BackgroundTasks` with **Celery** and **Redis** prevents task loss during worker crashes and allows horizontal worker scaling.
+
+Here is the complete production deployment setup including a **Celery task file**, an **updated FastAPI server**, a **Redis configuration**, and a **Docker Compose setup**.
+
+---
+
+### Project Structure
+
+```text
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+├── main.py        # FastAPI API server
+├── worker.py      # Celery task definitions
+└── tasks_db.py    # Redis state helper
+
+```
+
+---
+
+### 1. `requirements.txt`
+
+```text
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+celery>=5.3.6
+redis>=5.0.0
+PyGithub>=2.2.0
+instructor>=1.2.0
+openai>=1.14.0
+pydantic>=2.6.0
+
+```
+
+---
+
+### 2. `tasks_db.py` (Redis Helper)
+
+Handles persistent job state, replacing the temporary in-memory dictionary.
+
+```python
+import json
+import os
+import redis
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+JOB_EXPIRATION_SECONDS = 86400 * 7  # Keep results for 7 days
+
+def save_job_state(job_id: str, data: dict):
+    redis_client.setex(f"job:{job_id}", JOB_EXPIRATION_SECONDS, json.dumps(data))
+
+def get_job_state(job_id: str) -> dict:
+    raw = redis_client.get(f"job:{job_id}")
+    if not raw:
+        return None
+    return json.loads(raw)
+
+```
+
+---
+
+### 3. `worker.py` (Celery Worker)
+
+Executes codebase extractions (GitHub REST or local `git clone`) and Instructor AI pipelines inside isolated worker containers.
+
+```python
+import ast
+import os
+import shutil
+import subprocess
+import tempfile
+from datetime import datetime
+from enum import Enum
+from typing import List, Optional, Tuple
+
+from celery import Celery
+from github import Github, GithubException
+import instructor
+from openai import OpenAI
+from pydantic import BaseModel, Field
+
+from tasks_db import save_job_state
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+celery_app = Celery("hackathon_auditor", broker=REDIS_URL, backend=REDIS_URL)
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+)
+
+openai_client = instructor.from_openai(OpenAI())
+gh_token = os.getenv("GITHUB_TOKEN")
+gh_client = Github(gh_token) if gh_token else Github()
+
+# --- Pydantic Schemas ---
+class ImplementationStatus(str, Enum):
+    REAL_LOGIC = "REAL_LOGIC"
+    MOCKED_DATA = "MOCKED_DATA"
+    EMPTY_STUB = "EMPTY_STUB"
+
+class VerificationStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    EXAGGERATED = "EXAGGERATED"
+    GHOST_CLAIM = "GHOST_CLAIM"
+
+class TechnicalFinding(BaseModel):
+    feature_category: str
+    implementation_status: ImplementationStatus
+    file_path: str
+    evidence_snippet: str
+
+class CodeAuditorReport(BaseModel):
+    technical_findings: List[TechnicalFinding]
+    technical_execution_score: float = Field(..., ge=0.0, le=1.0)
+
+class CodeCitation(BaseModel):
+    file_path: Optional[str] = None
+    line_numbers: Optional[str] = None
+
+class ClaimAudit(BaseModel):
+    claimed_feature: str
+    verification_status: VerificationStatus
+    code_citation: Optional[CodeCitation] = None
+    audit_rationale: str
+
+class ClaimMismatchReport(BaseModel):
+    claim_audits: List[ClaimAudit]
+    claim_integrity_score: float = Field(..., ge=0.0, le=1.0)
+    audit_summary: str
+
+
+# --- Code Extraction Functions ---
+def parse_python_ast(file_path: str) -> str:
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            code = f.read()
+        tree = ast.parse(code)
+        imports, definitions = [], []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imports.append(node.module or "")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                definitions.append(f"Line {node.lineno}: def {node.name}")
+        return f"FILE: {file_path}\n  [Imports]: {', '.join(set(filter(None, imports)))}\n  [Declarations]: {', '.join(definitions[:20])}\n"
+    except Exception:
+        return f"FILE: {file_path} (AST Parsing Skipped)\n"
+
+def extract_via_git_clone(repo_full_name: str) -> Tuple[str, str]:
+    temp_dir = tempfile.mkdtemp(prefix="hackathon_audit_")
+    repo_url = f"https://github.com/{repo_full_name}.git"
+    if gh_token:
+        repo_url = f"https://x-access-token:{gh_token}@github.com/{repo_full_name}.git"
+
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, temp_dir],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        file_summaries = []
+        files_scanned = 0
+        ignored = {".git", "node_modules", "venv", "__pycache__", "dist", "build"}
+
+        for root, dirs, files in os.walk(temp_dir):
+            dirs[:] = [d for d in dirs if d not in ignored]
+            for file_name in files:
+                if files_scanned >= 35:
+                    break
+                full_path = os.path.join(root, file_name)
+                rel_path = os.path.relpath(full_path, temp_dir)
+
+                if file_name.endswith(".py"):
+                    file_summaries.append(parse_python_ast(full_path))
+                    files_scanned += 1
+                elif file_name in {"package.json", "requirements.txt", "Dockerfile", "README.md"}:
+                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_summaries.append(f"FILE: {rel_path}\n{f.read(3000)}\n")
+                    files_scanned += 1
+
+        return "\n".join(file_summaries), "LOCAL_GIT_CLONE"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+def fetch_codebase_context(repo_full_name: str) -> Tuple[str, str]:
+    try:
+        repo = gh_client.get_repo(repo_full_name)
+        contents = repo.get_contents("")
+        file_snippets = []
+        count = 0
+
+        while contents and count < 25:
+            item = contents.pop(0)
+            if item.type == "dir" and item.name not in {"node_modules", ".git"}:
+                try:
+                    contents.extend(repo.get_contents(item.path))
+                except GithubException:
+                    continue
+            elif item.type == "file" and not item.name.endswith((".png", ".jpg", ".zip")):
+                raw_text = item.decoded_content.decode("utf-8", errors="ignore")[:3000]
+                file_snippets.append(f"FILE: {item.path}\n{raw_text}\n")
+                count += 1
+
+        return "\n".join(file_snippets), "GITHUB_REST_API"
+    except Exception:
+        return extract_via_git_clone(repo_full_name)
+
+
+# --- Celery Task Definition ---
+@celery_app.task(name="tasks.process_audit_job")
+def process_audit_job_task(job_id: str, github_repo: str, pitch_claims: str):
+    job_data = {
+        "job_id": job_id,
+        "github_repo": github_repo,
+        "status": "PROCESSING",
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
+    save_job_state(job_id, job_data)
+
+    try:
+        context_str, extraction_method = fetch_codebase_context(github_repo)
+
+        # AI Agent Step 1: Code Auditor
+        code_report: CodeAuditorReport = openai_client.chat.completions.create(
+            model="gpt-4o",
+            response_model=CodeAuditorReport,
+            messages=[
+                {"role": "system", "content": "Inspect codebase context. Identify features and distinguish real working logic from mocks."},
+                {"role": "user", "content": f"Codebase:\n{context_str}"},
+            ],
+            temperature=0.1,
+        )
+
+        # AI Agent Step 2: Mismatch Agent
+        mismatch_report: ClaimMismatchReport = openai_client.chat.completions.create(
+            model="gpt-4o",
+            response_model=ClaimMismatchReport,
+            messages=[
+                {"role": "system", "content": "Compare pitch claims against ground-truth code report. Classify each claim as SUPPORTED, EXAGGERATED, or GHOST_CLAIM."},
+                {"role": "user", "content": f"Claims:\n{pitch_claims}\n\nGround Truth:\n{code_report.model_dump_json()}"},
+            ],
+            temperature=0.1,
+        )
+
+        final_score = round(
+            ((code_report.technical_execution_score * 0.5) + (mismatch_report.claim_integrity_score * 0.5)) * 10,
+            2,
+        )
+
+        job_data.update({
+            "status": "COMPLETED",
+            "completed_at": datetime.utcnow().isoformat() + "Z",
+            "extraction_method": extraction_method,
+            "final_score": final_score,
+            "code_audit": code_report.model_dump(),
+            "claim_mismatch": mismatch_report.model_dump(),
+        })
+
+    except Exception as e:
+        job_data.update({
+            "status": "FAILED",
+            "completed_at": datetime.utcnow().isoformat() + "Z",
+            "error": str(e),
+        })
+
+    save_job_state(job_id, job_data)
+
+```
+
+---
+
+### 4. `main.py` (FastAPI Server)
+
+Dispatches jobs to Celery without blocking the main event loop.
+
+```python
+from datetime import datetime
+import uuid
+from fastapi import FastAPI, HTTPException, Status
+from pydantic import BaseModel, Field
+
+from tasks_db import get_job_state, save_job_state
+from worker import process_audit_job_task
+
+app = FastAPI(title="Hackathon Co-Judge API", version="2.0.0")
+
+class AuditRequest(BaseModel):
+    github_repo: str = Field(..., example="octocat/Hello-World")
+    pitch_claims: str = Field(..., example="Slide 2 claims dynamic greeting generation logic.")
+
+class AuditJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+    created_at: str
+
+@app.post(
+    "/api/v1/audit/jobs",
+    response_model=AuditJobResponse,
+    status_code=Status.HTTP_202_ACCEPTED,
+)
+async def create_audit_job(request: AuditRequest):
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    created_at = datetime.utcnow().isoformat() + "Z"
+
+    initial_state = {
+        "job_id": job_id,
+        "status": "PENDING",
+        "github_repo": request.github_repo,
+        "created_at": created_at,
+    }
+    save_job_state(job_id, initial_state)
+
+    # Trigger Celery Background Task
+    process_audit_job_task.delay(job_id, request.github_repo, request.pitch_claims)
+
+    return AuditJobResponse(
+        job_id=job_id,
+        status="PENDING",
+        message="Task queued with Celery worker pool.",
+        created_at=created_at,
+    )
+
+@app.get("/api/v1/audit/jobs/{job_id}")
+async def get_audit_job_status(job_id: str):
+    job_data = get_job_state(job_id)
+    if not job_data:
+        raise HTTPException(status_code=404, detail="Audit job not found.")
+    return job_data
+
+```
+
+---
+
+### 5. `Dockerfile`
+
+```dockerfile
+FROM python:3.11-slim
+
+# Install Git for repository cloning
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+```
+
+---
+
+### 6. `docker-compose.yml`
+
+This spins up the Redis broker, 2 dynamic Celery worker instances, and the FastAPI application.
+
+```yaml
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: audit_redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    container_name: audit_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - redis
+
+  celery_worker:
+    build: .
+    container_name: audit_celery_worker
+    command: celery -A worker.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - redis
+
+```
+
+---
+
+### Running in Production
+
+To build and run the multi-container setup with scaled workers:
+
+```bash
+# Set credentials
+export OPENAI_API_KEY="your-openai-key"
+export GITHUB_TOKEN="your-github-token"
+
+# Run with 3 parallel worker containers
+docker compose up --build --scale celery_worker=3
+
+```

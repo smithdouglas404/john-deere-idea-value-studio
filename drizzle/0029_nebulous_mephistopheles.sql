@@ -1,0 +1,1 @@
+ALTER TABLE `studioProofArtifacts` MODIFY COLUMN `artifactType` enum('brd','technical_requirements','business_summary','repository','jira_context','demo','deck','video','market_research','other') NOT NULL;

@@ -1,0 +1,240 @@
+Below is a complete, production-ready Python background worker. It continuously polls GitHub repositories (or consumes webhook/polling queues), extracts new commits and modified file contents, generates vector embeddings using OpenAI, and upserts them into PostgreSQL using `pgvector` with `SQLAlchemy` and `pgvector-python`.
+
+---
+
+### Prerequisites & Dependencies
+
+Install required libraries:
+
+```bash
+pip install sqlalchemy pgvector openai PyGithub psycopg2-binary pydantic
+
+```
+
+Ensure your PostgreSQL instance has the `vector` extension enabled:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+```
+
+---
+
+### Worker Implementation: `github_vector_sync_worker.py`
+
+```python
+import os
+import time
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+from github import Github, GithubException
+from openai import OpenAI
+from sqlalchemy import (
+    Column,
+    String,
+    Text,
+    DateTime,
+    Integer,
+    create_engine,
+    select,
+    index,
+)
+from sqlalchemy.orm import declarative_base, sessionmaker
+from pgvector.sqlalchemy import Vector
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("GitHubVectorSync")
+
+# Environment Variables
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/vector_db")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
+EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_DIM = 1536  # Matching dimension for text-embedding-3-small
+
+# Initialize Clients
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+gh_client = Github(GITHUB_TOKEN) if GITHUB_TOKEN else Github()
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+# =====================================================================
+# 1. DATABASE MODELS (pgvector)
+# =====================================================================
+
+class RepositorySyncState(Base):
+    __tablename__ = "repo_sync_states"
+
+    repo_name = Column(String(255), primary_key=True)  # e.g., "owner/repo"
+    last_synced_commit_sha = Column(String(40), nullable=True)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CodeEmbedding(Base):
+    __tablename__ = "code_embeddings"
+
+    id = Column(String(255), primary_key=True)  # {repo_name}:{file_path}:{commit_sha}
+    repo_name = Column(String(255), nullable=False, index=True)
+    commit_sha = Column(String(40), nullable=False)
+    file_path = Column(Text, nullable=False)
+    content_chunk = Column(Text, nullable=False)
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Create tables if they do not exist
+Base.metadata.create_all(engine)
+
+
+# =====================================================================
+# 2. HELPER FUNCTIONS
+# =====================================================================
+
+def generate_embedding(text: str) -> List[float]:
+    """Generates a vector embedding for a block of code/text using OpenAI."""
+    # Truncate to prevent token limit errors
+    clean_text = text[:8000].replace("\n", " ")
+    response = openai_client.embeddings.create(
+        input=[clean_text],
+        model=EMBEDDING_MODEL
+    )
+    return response.data[0].embedding
+
+
+def fetch_latest_commits(repo_full_name: str, since_sha: Optional[str] = None) -> List[dict]:
+    """Fetches new commits from GitHub API since the last recorded SHA."""
+    try:
+        repo = gh_client.get_repo(repo_full_name)
+        commits_iterable = repo.get_commits()
+        
+        fetched_commits = []
+        for commit in commits_iterable:
+            if since_sha and commit.sha == since_sha:
+                break
+            fetched_commits.append(commit)
+            if len(fetched_commits) >= 20:  # Cap per sync cycle to manage API rate limits
+                break
+                
+        # Return in chronological order (oldest to newest)
+        return list(reversed(fetched_commits))
+    except GithubException as e:
+        logger.error(f"GitHub API error for {repo_full_name}: {e.message}")
+        return []
+
+
+def process_commit_and_update_vector_db(repo_full_name: str, commit) -> None:
+    """Extracts modified files from a commit, embeds code chunks, and updates pgvector."""
+    db = SessionLocal()
+    try:
+        logger.info(f"Processing commit {commit.sha[:7]} for {repo_full_name}...")
+        
+        # Examine modified or added files in this commit
+        for file in commit.files:
+            # Skip non-code/binary assets
+            if file.filename.endswith((".png", ".jpg", ".zip", ".pdf", ".lock", ".svg")) or file.status == "removed":
+                continue
+
+            # Skip large files or files with empty patches
+            if not file.patch or len(file.patch) > 10000:
+                continue
+
+            chunk_text = f"File: {file.filename}\nCommit: {commit.commit.message}\nDiff:\n{file.patch}"
+            vector = generate_embedding(chunk_text)
+            
+            doc_id = f"{repo_full_name}:{file.filename}:{commit.sha[:7]}"
+
+            # Upsert into PostgreSQL using SQLAlchemy
+            existing_record = db.query(CodeEmbedding).filter(CodeEmbedding.id == doc_id).first()
+            if existing_record:
+                existing_record.content_chunk = chunk_text
+                existing_record.embedding = vector
+                existing_record.updated_at = datetime.utcnow()
+            else:
+                record = CodeEmbedding(
+                    id=doc_id,
+                    repo_name=repo_full_name,
+                    commit_sha=commit.sha,
+                    file_path=file.filename,
+                    content_chunk=chunk_text,
+                    embedding=vector,
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(record)
+
+        # Update sync checkpoint state
+        sync_state = db.query(RepositorySyncState).filter(RepositorySyncState.repo_name == repo_full_name).first()
+        if not sync_state:
+            sync_state = RepositorySyncState(repo_name=repo_full_name)
+            db.add(sync_state)
+
+        sync_state.last_synced_commit_sha = commit.sha
+        sync_state.last_synced_at = datetime.utcnow()
+
+        db.commit()
+        logger.info(f"Successfully vectorized and saved commit {commit.sha[:7]}.")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed processing commit {commit.sha[:7]}: {e}")
+    finally:
+        db.close()
+
+
+# =====================================================================
+# 3. BACKGROUND WORKER LOOP
+# =====================================================================
+
+def run_sync_worker(target_repos: List[str], poll_interval_seconds: int = 60):
+    """Main daemon loop polling target repositories for new commits."""
+    logger.info(f"Starting GitHub Vector Sync Worker for repos: {target_repos}")
+
+    while True:
+        db = SessionLocal()
+        try:
+            for repo_name in target_repos:
+                # 1. Fetch last synced commit SHA from DB
+                sync_state = db.query(RepositorySyncState).filter(RepositorySyncState.repo_name == repo_name).first()
+                last_sha = sync_state.last_synced_commit_sha if sync_state else None
+
+                # 2. Fetch new commits from GitHub REST API
+                new_commits = fetch_latest_commits(repo_name, since_sha=last_sha)
+
+                if new_commits:
+                    logger.info(f"Found {len(new_commits)} new commits for {repo_name}.")
+                    for commit in new_commits:
+                        process_commit_and_update_vector_db(repo_name, commit)
+                else:
+                    logger.debug(f"No new commits found for {repo_name}.")
+
+        except Exception as e:
+            logger.error(f"Error in sync worker loop: {e}")
+        finally:
+            db.close()
+
+        time.sleep(poll_interval_seconds)
+
+
+if __name__ == "__main__":
+    # List of repositories to keep synchronized in pgvector
+    REPOSITORIES_TO_SYNC = [
+        "octocat/Hello-World"
+    ]
+    
+    # Run loop with a 60-second polling frequency
+    run_sync_worker(REPOSITORIES_TO_SYNC, poll_interval_seconds=60)
+
+```
+
+---
+
+### Key Technical Features
+
+1. **Incremental Checkpointing:** Tracks `last_synced_commit_sha` in the `repo_sync_states` table so the worker processes only new commits on subsequent runs.
+2. **`pgvector` Native Integration:** Uses `pgvector.sqlalchemy.Vector` to map Python list floats directly into Postgres `vector(1536)` columns.
+3. **Diff-aware Embedding:** Captures the file path, commit message, and patch content to ensure the generated embedding reflects modified code logic.
+4. **Idempotent Upserts:** Generates unique primary keys (`repo:filepath:sha`) to prevent duplicate vector entries if a job retries or encounters network interruptions.

@@ -1,0 +1,144 @@
+To build a scalable hackathon hosting platform (similar to Devpost or Taikai), your backend must support four core user personas: **Organizers**, **Participants**, **Sponsors**, and **Judges**.
+
+Below is the breakdown of the platform's core functional requirements and a normalized relational database schema.
+
+---
+
+## 1. Feature Requirements Breakdown
+
+### Organizer Features
+
+* **Event Creation & Management:** Customizable landing page (banner, schedule, rules, FAQs, prize pools).
+* **Track & Prize Configuration:** Define custom submission categories (e.g., "Best AI Project", "Best Fintech Tool") and associated prize amounts/rewards.
+* **Rubric Builder:** Configurable scoring rubrics (e.g., Innovation, Feasibility, UX) with custom weighting.
+* **Announcements:** Broadcast notifications via email, Discord/Slack webhooks, or in-app alerts.
+
+### Participant & Team Features
+
+* **User Profiles:** Skill tags, GitHub/GitLab links, portfolio URLs, and role availability (e.g., Developer, Designer, PM).
+* **Team Matchmaking:** "Looking for Team" status flags, team creation, join requests, and member invitation management.
+* **Project Submissions:** Form submission including project title, elevator pitch, detailed story, tech stack tags, repository URL, video demo link (YouTube/Vimeo), and team member tags.
+
+### Judge Features
+
+* **Judging Dashboard:** Private view displaying assigned submissions with inline video embeds and project details.
+* **Scorecards:** Interactive scoring sliders/inputs matching the event's rubric.
+* **Conflict of Interest Handling:** Ability for judges to recuse themselves from specific project evaluations.
+
+---
+
+## 2. Relational Database Schema
+
+```sql
+-- 1. Users & Profiles
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    avatar_url TEXT,
+    bio TEXT,
+    github_url VARCHAR(255),
+    linkedin_url VARCHAR(255),
+    role VARCHAR(20) DEFAULT 'participant', -- 'participant', 'organizer', 'admin'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_skills (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    skill_name VARCHAR(50) NOT NULL,
+    PRIMARY KEY (user_id, skill_name)
+);
+
+-- 2. Hackathons & Configuration
+CREATE TABLE hackathons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organizer_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+    title VARCHAR(200) NOT NULL,
+    slug VARCHAR(200) UNIQUE NOT NULL,
+    tagline TEXT,
+    description TEXT,
+    banner_url TEXT,
+    registration_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    submission_deadline TIMESTAMP WITH TIME ZONE NOT NULL,
+    judging_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) DEFAULT 'draft', -- 'draft', 'active', 'judging', 'completed'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tracks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hackathon_id UUID REFERENCES hackathons(id) ON DELETE CASCADE,
+    title VARCHAR(100) NOT NULL,
+    description TEXT,
+    prize_amount DECIMAL(10, 2)
+);
+
+CREATE TABLE rubric_criteria (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hackathon_id UUID REFERENCES hackathons(id) ON DELETE CASCADE,
+    title VARCHAR(100) NOT NULL,
+    description TEXT,
+    max_score INT DEFAULT 10,
+    weight DECIMAL(3, 2) DEFAULT 1.00 -- Allows weighted scoring
+);
+
+-- 3. Teams & Submissions
+CREATE TABLE teams (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hackathon_id UUID REFERENCES hackathons(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    looking_for_members BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE team_members (
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member', -- 'leader', 'member'
+    PRIMARY KEY (team_id, user_id)
+);
+
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hackathon_id UUID REFERENCES hackathons(id) ON DELETE CASCADE,
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    track_id UUID REFERENCES tracks(id) ON DELETE SET NULL,
+    title VARCHAR(150) NOT NULL,
+    tagline VARCHAR(255),
+    description TEXT NOT NULL,
+    github_url VARCHAR(255),
+    video_url VARCHAR(255),
+    demo_url VARCHAR(255),
+    submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_team_submission UNIQUE (hackathon_id, team_id)
+);
+
+-- 4. Judging & Scoring
+CREATE TABLE judge_assignments (
+    hackathon_id UUID REFERENCES hackathons(id) ON DELETE CASCADE,
+    judge_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    is_recused BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (judge_id, project_id)
+);
+
+CREATE TABLE scores (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    judge_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    criterion_id UUID REFERENCES rubric_criteria(id) ON DELETE CASCADE,
+    score INT NOT NULL,
+    feedback TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (judge_id, project_id, criterion_id)
+);
+
+```
+
+---
+
+## 3. Key Architectural Considerations
+
+* **Media Storage & Embeds:** Avoid directly storing video files. Use third-party video URL embeds (YouTube, Vimeo, Loom) and cloud storage (AWS S3, Cloudflare R2) with signed URLs for image assets (banners, project screenshots).
+* **Traffic Spike Optimization:** Hackathon platforms experience extreme write-load surges in the final **15 minutes before the deadline**. Implement queue-based background processing (e.g., Redis + BullMQ) for processing project submissions and email updates.
+* **Real-time Updates:** Use WebSockets or Server-Sent Events (SSE) for team join requests, live countdown timers, and broadcast announcements during the event.

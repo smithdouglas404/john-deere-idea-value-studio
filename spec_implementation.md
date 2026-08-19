@@ -1,0 +1,147 @@
+# 17-Source Implementation Record
+
+This document records the current implementation state of the connected developer specification. A requirement is marked **Implemented and validated** only where an application capability and relevant type/test or visual check exist. Where the user approved a production-usable MySQL/TiDB equivalent in place of a PostgreSQL-specific technology requirement, that equivalent is stated explicitly rather than presented as native PostgreSQL functionality.
+
+| Source | Connected requirement set | Current implementation state |
+| --- | --- | --- |
+| 01 | AI-enabled idea lifecycle, value bottleneck framing, opportunity-to-decision model | **Implemented and visible.** Value Field intake, research, sponsor selection, Event HQ, judging, and realization are the visible lifecycle. |
+| 02 | Multi-role hackathon platform, profiles, schedules, FAQs, tracks/prizes, teams, submissions, media | **Implemented and validated.** Event configuration, profile links/availability, opt-in team recommendations, team requests/messages, multi-track routing, evidence links, schedules, FAQs, and submission records are implemented. Event, team, submission, and judge workspaces use bounded 15-second foreground refresh for timely operating updates without an external realtime provider. |
+| 03 | Four operational phases and AI leverage points | **Implemented and visible.** The Event HQ presents capture/design, mobilize, build, judge, and realize checkpoints. |
+| 04 | Evidence-first AI co-judge, fairness controls, deterministic rubric | **Implemented and validated.** Citation-led agent report, deterministic score preview, human overrides, objections, recusal, and human-only final score aggregation are implemented. |
+| 05 | Code Auditor and Claim Mismatch outputs | **Implemented and validated.** Bounded repository, deck, video, and claim evidence become a structured Hackathon Agent audit with explicit claim references. |
+| 06 | Judge dashboard and fast review workflow | **Implemented and validated.** Assigned review queue, keyboard navigation, evidence context, claim overrides, recusal, immutable scorecards, and persistent secondary-review escalation are provided. |
+| 07 | Consent-based Developer Talent Graph and semantic retrieval | **Implemented and validated with the approved MySQL/TiDB equivalent.** Opt-in profile, verified telemetry, GitHub/GitLab/portfolio links, role availability, versioned deterministic embeddings, strict repository/project filtering, cosine ranking, and actor-scoped retrieval audit records are implemented. |
+| 08 | Judging API contracts and audit access | **Implemented.** Typed authenticated procedures support assignment, audit retrieval, review context, scoring, overrides, objections, and queue-first audits. |
+| 09 | Structured auditor and mismatch processing | **Implemented.** The Hackathon Agent composes bounded evidence and uses deterministic arithmetic outside the model. |
+| 10 | GitHub API evidence extraction | **Implemented and validated.** Public API and short-lived GitHub App access gather metadata, commits, bounded file content, citations, and contributor evidence. |
+| 11 | API-first, shallow-clone fallback, static analysis, cleanup | **Implemented and validated.** The audit path is API-first with a bounded shallow-clone fallback, temporary-workspace cleanup, TypeScript/JavaScript AST-derived imports, declarations, route signals, and test signals, plus structured Python imports and declarations. |
+| 12 | Durable asynchronous audit API and status | **Implemented and validated.** Agent jobs are persisted as queued/processing/complete/failed and have a deploy-ready authenticated worker callback. |
+| 13 | Redis/Celery durable worker, container deployment | **Implemented and validated with a managed equivalent.** The application uses a database-backed durable queue, idempotent processing guard, persisted status, and authenticated managed scheduler callback. A dedicated Redis/Celery or containerized worker remains an optional scale-up path if John Deere mandates that specific infrastructure. |
+| 14 | Incremental repository vector sync | **Implemented and validated with the approved MySQL/TiDB equivalent.** Authorized commit checkpoints, bounded diff chunking, content hashes, idempotent storage, versioned deterministic 1536-dimension embeddings, strict connection filtering, and auditable cosine retrieval are implemented. |
+| 15 | pgvector HNSW index and query tuning | **Implemented with an approved application-level equivalent.** The managed MySQL/TiDB environment performs bounded, versioned cosine ranking in the service layer and records retrieval provenance. This is intentionally not described as native PostgreSQL pgvector/HNSW. |
+| 16 | Full hackathon schema, multi-track routing, collaboration, balanced judging, leaderboards | **Implemented and validated.** Normalized event/team/project records, multi-track routing, collaboration messages, workload-balanced judge assignment, immutable finalized scorecards, and human-score leaderboards are implemented. |
+| 17 | Judge assignment isolation and immutable scoring | **Implemented and validated with the approved MySQL/TiDB equivalent.** Assigned-judge gates, recusal, own-scorecard controls, finalized-scorecard rejection, project-scoped repository filtering, administrator-only semantic evidence search, and actor-scoped retrieval audit records are enforced and tested. |
+
+## Verified application evidence
+
+### Published UI lifecycle validation — test-only record
+
+The following intentionally test-only journey was executed through the published application UI on **2026-08-06 EDT**. The opportunity, economics, submission, audit, and scorecard are explicitly labeled test-only; no business investment claim was created.
+
+| Published route | Observed result |
+| --- | --- |
+| `/workspace` | Created a test-only opportunity through **Capture opportunity**. |
+| `/opportunities/30001` | Entered sponsor-owned test economics, selected the opportunity, launched its proof sprint, and later observed proof-derived confidence without any automatic sponsor-gate change. |
+| `/hackathons/30001` | Registered, formed a test-only team, moved the event into proof work, and created the draft project through Event HQ. |
+| `/submission-evidence` | The dedicated participant workspace displayed the UI-created project, final-evidence fields, audited-claim objection controls, prize routing, and team collaboration. |
+| `/judging?project=30001` | The Hackathon Agent completed a cited, limitation-aware audit. A user-authorized, clearly labeled test-only human scorecard was recorded separately from the provisional agent score. |
+| `/realization` | The UI-created opportunity appeared in the post-event portfolio and in the evidence-backed indicator-update form. Value movement remained dependent on an explicit recorded indicator, not inferred activity. |
+
+The returning opportunity cockpit showed one project, one completed audit, proof-derived confidence **66**, and human evidence **1.45/10**. It preserved the sponsor-owned economic inputs and gate, offering a non-binding next-proof/hold recommendation instead of an automatic investment decision.
+
+### Published natural stale-audit recovery validation
+
+The event-scoped worker for the UI-created test sprint was resumed on its configured one-minute schedule **without a later manual refresh**. Audit `30001` was placed in a test-only `processing` state with a start time older than the ten-minute recovery threshold. The published Heartbeat run `UUfRFh6Yuw2QRLvnU7RZ4J` started at **2026-08-06 05:10:09 UTC**, returned HTTP `200`, and reported `processed: 1` with audit `30001` restored to `complete`. The test worker was then paused to prevent unnecessary repeated test execution.
+
+For a clean scheduler verification, the same worker next completed a natural zero-work run `7qbK8q66aCM5qSfxSEjhke` at **2026-08-06 05:13:09 UTC** with no manual pause/resume after that point. Audit `30001` was then again placed in an explicitly test-only stale processing state. The following natural Heartbeat run `SW5y6Cgazhu5R6RQj2QM9u` started at **2026-08-06 05:15:52 UTC**, returned HTTP `200`, and reported `processed: 1` with audit `30001` restored to `complete`. The worker was paused immediately afterward. This verifies normal event-scoped schedule execution and automatic stale-audit recovery.
+
+### Specialist evaluator validation — current checkpoint preview
+
+On **2026-08-06 EDT**, the current checkpoint executed all five specialist evaluators against the completed authorized-repository proof audit for test project `1`, audit `1`, using the identity-redacted packet hash `2589ea8ce273d405c53663445eb4f412bf6420a39fddf79701bc149975fc3e40`. The implementation used actual model calls, persisted the results, and produced two cited findings for each skill: UX/UI (`1.00/10`), cloud architecture (`2.05/10`), security (`1.80/10`), development quality (`2.00/10`), and value/feasibility (`2.05/10`). These deliberately low, evidence-limited test results are non-binding and do not change the human leaderboard.
+
+The current preview at `/judging?project=1` visibly rendered all five completed skill panels, their provisional criterion-local scores, confidence labels, and cited-source counts. The human scorecard remained separate and immutable; the interface retained human claim override, escalation, and recusal controls. A valid project deep link now selects the intended submission rather than silently opening the queue default. Published validation remains required after the current checkpoint is released.
+
+### Specialist review plan in the opportunity workflow
+
+The opportunity page now visibly exposes the five advisory evaluators before a user submits a proof: UI/UX, cloud architecture, security, development quality, and value/feasibility. Each tile states the evidence it will examine, the page labels them as advisory only, and the panel explains that the shared packet is identity-redacted, cited, and challengeable. Before a project exists, the page shows an explicit activation condition rather than hiding the agents. Once an opportunity has a project, the panel returns the latest proof project and specialist record statuses through an owner/admin-scoped query, displays the completed count, and provides a project-context Judge Desk link to the cited findings. A visual check at `/opportunities/60001` confirmed the five agents are visible directly below the sponsor-owned value case; the full automated suite passes **65 tests**.
+
+### Opportunity intake repairs — current checkpoint preview
+
+On **2026-08-06 EDT**, a recorded user WebM asset with browser MIME `audio/webm;codecs=opus` failed transcription because that parameterized MIME type was converted to an unrecognized `audio.audio` upload filename. The transcription pathway now normalizes browser MIME parameters before storage and Whisper upload, explicitly accepts the documented WebM, MP3, WAV, OGG, and M4A formats, and preserves a clear unsupported-format error for other files. The exact previously failed recording, asset `2` on test opportunity `60001`, was retried successfully after the repair: the service detected English audio, returned a duration of `32.22` seconds, and persisted a `404`-character transcript. The opportunity page visibly displayed the confirmed transcript. A subsequent **fresh** upload of those WebM bytes through the real `opportunities.uploadAsset` procedure created asset `30001` with normalized stored MIME `audio/webm`, a `404`-character persisted transcript, and persisted extraction metadata. This exercised the actual intake contract rather than only the helper retry.
+
+The sponsor economics editor was previously hidden in a collapsed row despite an empty value range. The current preview automatically opens **Set the value range and proof economics** whenever conservative or upside values are missing, displaying conservative value, upside value, cost to prove, months to value, and the save control together. TypeScript validation and the automated suite pass with **48 tests**, including MIME normalization, parameterized WebM intake procedure coverage, and default-open sponsor-economics rendering coverage.
+
+### Enriched opportunity dossier and pre-proof signal board — current checkpoint preview
+
+On **2026-08-06 EDT**, the active `Telemetry for tractors` opportunity (`60001`) completed a consented, source-backed external research run using the enriched dossier contract. The stored dossier separates the idea narrative, customer impact, market signal, operating impact, qualitative value category, evidence gaps, and direct sources. The current research output is explicitly limitation-aware: the cited source set identifies tractor telematics and remote diagnostics precedents, precision-ag adoption context, mixed-fleet interoperability, and field-connectivity constraints, while retaining customer interviews, pilot telemetry, and farm-level economics as evidence gaps. The user interface labels the returned value perspective **Cost optimization** as qualitative context only and does not treat source count as market size, customer demand, or a financial outcome.
+
+The current preview visibly renders the decision-grade dossier at `/opportunities/60001`, including a citation-count evidence-coverage visual, direct source links, and the sponsor-owned value form. The legacy duplicate research readout is suppressed while the consent and rerun controls remain available. The new `/signals` board visibly supports one endorsement per signed-in member and structured, non-confidential customer, market, operating, evidence-offer, or question notes. Counts are labeled as early signals; no fabricated endorsements or comments were seeded. On selection, the proof-sprint handoff carries only a count-based, non-binding context statement that explicitly prohibits treating popularity as validation or a decision. TypeScript validation and the complete automated suite pass with **51 tests**.
+
+The sponsor-owned value-case workspace now also surfaces a dedicated **Community signal / sponsor review** strip before the sponsor economics editor. It carries only endorsement and structured-observation counts plus recent categories, and states directly that those signals do not affect the value range, evidence confidence, scorecards, or investment gate. A final visual check at `/opportunities/60001` confirmed this community context is visibly separate from the economics form; the automated suite now passes **52 tests**, including a component-level non-binding-context assertion.
+
+The first live enriched-research request returned incomplete JSON under the initial output setting. The research agent now uses a provider-specific completion cap and has one compact structured-output retry: it returns exactly three cited findings on retry, preserves the same evidence-first limitations, and refuses to create any unsourced fallback dossier if the retry also fails. The retry path is covered by an automated test; TypeScript validation and the suite now pass **53 tests**.
+
+### Specialist evaluator governance boundary — current checkpoint preview
+
+Specialist evaluator outputs require a criterion-local reference, one supplied citation, confidence level, limitations, and questions for the human judge; the shared packet excludes team identity. The live specialist panels remain non-binding and cannot contribute to the final leaderboard. The human aggregation path accepts only finalized human scorecards and their rubric items; a test confirms an extra non-scorecard record cannot alter the resulting human score. Project members can retrieve stable specialist challenge references from objection context and submit an objection only against the persisted finding reference; a non-team user is rejected. TypeScript validation and the full suite pass **56 tests**.
+
+The actual event leaderboard boundary is now covered directly: its router uses only finalized scorecards, rubric items, and the audit preview, and the test asserts that it never queries the persisted `specialistEvaluations` table. The visible human score remains `8` while the separate audit preview is `1.25`. A further procedure test confirms a non-team user cannot submit even a syntactically valid `specialist:<evaluation>:<finding>` objection. TypeScript validation and the full suite pass **58 tests**.
+
+### Repository evidence project-context deep link — current checkpoint preview
+
+The repository-control workspace now accepts only a positive-integer `?project=` context and visibly binds the page to that project ID. Unit coverage rejects zero, decimal, and nonnumeric values. Visual verification at `/repository-access?project=30001` showed the empty project context, authorization controls, and indexed-evidence control in direct context. A second check at `/repository-access?project=1` showed the existing authorized proof project’s active public read-only repository authorization and its bounded indexed-code evidence control. TypeScript validation and the automated suite pass **59 tests**.
+
+### Cross-lifecycle visual validation — current checkpoint preview
+
+The visible lifecycle routes `/workspace`, `/opportunities/60001`, `/hackathons`, `/submission-evidence`, `/judging?project=1`, and `/realization` all rendered successfully in one review pass. The interface preserves the evidence-first story: capture and sponsor economics precede proof, participant evidence remains separate from human judgment, specialist panels remain non-binding, and realization requires a recorded indicator update. The pass also identified a design refinement opportunity: the opportunity dossier expresses the Fieldbook journey clearly, while submission, judging, and realization need a stronger spatial distinction among evidence, working value, and decision controls, plus functional proof-movement indicators.
+
+The shared Fieldbook lifecycle band is now route-aware. `/submission-evidence` visibly activates **Working value canvas**, while `/judging?project=1` and `/realization` visibly activate **Investment decision rail**; the active posture also receives a bounded pulse treatment and an accessible lifecycle label. The route mapping is covered by automated tests. A final desktop review confirmed the indicator appears consistently above the participant evidence form, the human review desk, and the realization update workspace. The overall suite now passes **62 tests**.
+
+The major evidence forms now add a second, spatial hierarchy cue. `/submission-evidence` separates **01 / Evidence ledger** final proof inputs from **02 / Interpretation loop** participant challenges. `/realization` separates **01 / Evidence ledger** portfolio context from **03 / Decision rail** indicator recording, using a restrained harvest rule only for the decision control. The Judge Desk already presents its assigned review queue as the decision rail. A visual check confirmed the labels and border treatment remain readable without adding invented metrics or turning community signals into a score.
+
+### Mandatory source archive and traceability
+
+The complete 17-file developer source archive is now accompanied by an immutable SHA-256 manifest in `source_manifest.md` and a source-to-code-to-test reconciliation record in `source_traceability.md`. The traceability record classifies every source as verified implemented, implemented with the stated managed/MySQL-TiDB equivalent, or optional scale-up. It explicitly reserves native PostgreSQL/pgvector/HNSW and a standalone Redis/Celery deployment for a John Deere-approved scale-up rather than representing those substitutions as delivered native infrastructure.
+
+### Governed five-skill specialist panel
+
+The specialist panel has a fixed evidence-bounded set of five skills: UX/UI, cloud architecture, security, development quality, and value/feasibility. Every skill evaluates the same identity-redacted packet, requires a supplied citation for each material finding, limits its response to concise provisional observations and questions, and states that it is non-binding and cannot determine a winner. The policy text is now centralized and directly unit-tested for all five skills; TypeScript validation and the full suite pass **63 tests**.
+
+### Shared lifecycle-strip key repair
+
+The lifecycle strip previously returned an unkeyed shorthand fragment from its zone map, producing React’s `Each child in a list should have a unique "key" prop` warning in `StudioShell`. The strip now uses a keyed `Fragment` for each zone/connector pair. A server-rendered regression test confirms the lifecycle band emits no `console.error`; the current suite passes **64 tests**. After a real browser reload of `/?from_webdev=1`, the recent console window contains no recurrence of the StudioShell list-key warning.
+
+### Connected event-stage visual pass
+
+A five-route desktop review confirms the visible proof journey is connected: `/hackathons` frames the controlled proof system and its five operating checkpoints; `/hackathons/1` shows the selected proof sprint, its decision leaderboard, rubric, project, and team operating context; `/submission-evidence?project=1` opens the selected project’s traceable proof inputs and participant challenge loop; `/judging?project=1` opens that project’s evidence packet, provisional agent evidence, and human decision controls; `/realization` carries the resulting portfolio context into an evidence-backed indicator update. These views preserve the Fieldbook evidence ledger → working value canvas → decision rail model and keep agent output explicitly non-binding. This review validates visible route continuity; interaction-level form submission remains tracked separately.
+
+The latest full-page review confirms the warm Fieldbook palette, operational labels, narrative headlines, and route-aware lifecycle rail are consistent. It also retains a specific open refinement: Submission, Judge Desk, and Realization need more functional contour/elevation and confidence/proof-movement language so the Fieldbook model is experienced as an ownable operating system rather than a collection of well-styled governance panels. Signal Harvest remains reserved for active gate movement, committed next actions, readiness, and decision-critical value figures.
+
+Submission and Realization now use zone-specific contour materials as a structural cue rather than a score: evidence-ledger panels use restrained green elevation lines; participant interpretation uses muted field contours; and the realization decision rail uses a disciplined harvest elevation treatment. The labels explain the role of each zone and no contour treatment claims confidence, maturity, savings, or readiness beyond the recorded evidence. A desktop review confirmed the textures remain behind the forms and preserve text contrast.
+
+### Sponsor economics persistence repair — pending authenticated UI confirmation
+
+The value-case mutation now reads the opportunity back from the database after its update and returns that persisted row. The browser applies that exact returned row to the matching opportunity-detail cache before it triggers a background invalidation, then shows a success status. This removes the prior display path in which a saved economic range could remain visually empty while only a later refetch refreshed the cockpit. Router coverage now proves the mutation returns the saved low value, high value, cost-to-prove, time-to-value, currency, and investment-gate fields. TypeScript validation and the automated suite pass **64 tests**; an authenticated browser save/refresh confirmation remains open.
+
+### Live Event Pulse — current checkpoint preview
+
+Event HQ now includes a 15-second foreground-refreshed **Live Event Pulse**. It reports only persisted operational counts: registrations, teams, submitted proof projects, completed audits, specialist-review progress, and finalized human decisions. The derived blockers are factual and constrained to those records: no teams, no proof project, draft proof, audit in flight, missing cited specialist reviews, or evidence awaiting a human decision. It produces no synthetic event-health score, does not rank teams, and does not change a sponsor gate. At `/hackathons/1`, the current pulse visibly showed `1` registration, `1` team, `1/1` proof submitted, `1` completed audit, `5/5` specialist reviews, and `1` human decision. The `deriveEventPulse` tests cover specialist-pending, human-decision-pending, and decision-evidence-ready states; TypeScript validation and the full suite pass **68 tests**.
+
+### AI market validation and readable value case
+
+The opportunity research surface is now explicitly labeled **AI market validation / cited research**. It states the boundaries up front: AI organizes market, customer, operating, and value questions; it does not validate demand, create ROI, or decide the investment gate. The underlying dossier keeps direct source links, category-count evidence coverage, customer involvement, operating impact, qualitative value category, evidence gaps, and limitations together.
+
+The user-reported small decision-support type was corrected by giving the Value Case Cockpit a scoped readable-type layer. Support labels that previously rendered at 8–12px now render at 11–14px with increased line-height; cited-evidence summaries, source titles, evidence-gap items, and limitations were also raised and kept concise. A 1440×900 desktop validation confirmed the $500,000–$800,000 sponsor range, AI processing boundary, and human investment-gate explanation are comfortably readable without hiding the economics. TypeScript validation and the full suite pass **68 tests**.
+
+### Participant Mission Control
+
+The participant proof workspace now begins with a live **Mission Control** built from existing authorized project and review records. It shows team connection, final-evidence state, audit state, distinct completed specialist skills out of five, and one accountable next action. The action progresses from final evidence → audit → specialist evidence → review cited findings, without scoring the participant or changing a human decision. A visual validation at `/submission-evidence?project=1` confirmed a submitted project with a complete audit and all five distinct skills now correctly shows **Review cited findings** and `5/5 complete`. The suite passes **70 tests**.
+
+### Authenticated browser repair confirmation
+
+The user confirmed both final authenticated-browser checks: a WebM voice recording now transcribes and appears in the opportunity workflow, and sponsor-entered conservative value, upside value, cost to prove, and time-to-value inputs now save and remain visible after refresh. This closes the previously reported transcription and sponsor-economics persistence defects in the real user session.
+
+- TypeScript validation passes.
+- TypeScript validation passes and the automated suite currently passes **43 tests**, including role isolation, claims/objections, finalized scorecards, secondary-review retrieval, GitHub App access, bounded agent evidence ingestion, AST-derived static evidence, durable audit idempotence, deterministic score aggregation, opt-in team matching, versioned repository-index vectors, and Judge Desk project deep-link behavior.
+- The visual pass confirms the integrated Value Field, Event HQ, submission, judging, realization, repository-control, and talent routes render.
+- A seven-route live visual pass confirms the navigation frame and major workspaces load without a route-level failure. The current preview has no seeded event, project, or opportunity data, so a data-backed end-to-end interaction pass remains required before describing the full lifecycle as complete.
+- The published test-only repository monitor ran successfully once against the explicit GitHub App repository authorization, returned HTTP 200, recorded its authorized observation, and was then paused to avoid unnecessary recurring test executions. The test-only proof project remains clearly labeled and is not an investment or award record.
+- A live actor-scoped retrieval against that monitored test-only connection returned an authorized indexed `README.md` evidence chunk from commit `93fe917d50d35fb7fe6beaf94a813ea9d6398788` using the documented `mysql-hash-v1` embedding version, and recorded its retrieval audit. This validates both the authorized indexing and query path without exposing unapproved repository content.
+
+## Optional technology substitutions
+
+1. A managed or customer-approved **PostgreSQL database with `pgvector` and HNSW** remains an optional scale-up path. The approved MySQL/TiDB equivalent is implemented and validated for the current application.
+2. A customer-approved **persistent worker environment** is optional only if the customer mandates an independent Redis/Celery or containerized worker rather than the deployed managed scheduler and database-backed queue.
+3. A John Deere-approved media/realtime provider is optional if live push updates, expanded video processing, and enterprise event notifications are needed beyond the current synchronous, durable application operations.
+
+The optional substitutions above should be selected only if John Deere requires those specific technologies or higher-scale operational characteristics; they are not blockers to the implemented, validated equivalence path.

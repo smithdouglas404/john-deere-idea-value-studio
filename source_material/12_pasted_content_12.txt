@@ -1,0 +1,424 @@
+Below is the complete, production-ready **FastAPI** application. It wraps the Instructor/GitHub auditing pipeline into non-blocking, asynchronous endpoints.
+
+It uses FastAPI’s `BackgroundTasks` (or `asyncio` task execution) alongside a status tracking store so that judging requests return immediately (`202 Accepted`) while the AI pipeline runs in the background.
+
+---
+
+### Prerequisites
+
+```bash
+pip install fastapi uvicorn PyGithub instructor openai pydantic
+
+```
+
+Set environment variables:
+
+```bash
+export OPENAI_API_KEY="your-openai-key"
+export GITHUB_TOKEN="your-github-token"
+
+```
+
+---
+
+### Production FastAPI Application: `main.py`
+
+```python
+import ast
+import asyncio
+from enum import Enum
+import os
+import shutil
+import subprocess
+import tempfile
+import uuid
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Status
+from github import Github, GithubException
+import instructor
+from openai import OpenAI
+from pydantic import BaseModel, Field
+
+# =====================================================================
+# 1. SETUP & IN-MEMORY TASK STORE
+# =====================================================================
+
+app = FastAPI(
+    title="AI Hackathon Co-Judge API",
+    description="Async API for automated GitHub auditing and pitch-claim verification.",
+    version="1.0.0",
+)
+
+# Clients
+openai_client = instructor.from_openai(OpenAI())
+gh_token = os.getenv("GITHUB_TOKEN")
+gh_client = Github(gh_token) if gh_token else Github()
+
+# Simple in-memory task database (In production, replace with Redis or Postgres)
+tasks_db: Dict[str, dict] = {}
+
+
+# =====================================================================
+# 2. PYDANTIC SCHEMAS (REQUEST / RESPONSE / DOMAIN)
+# =====================================================================
+
+class TaskStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class AuditRequest(BaseModel):
+    github_repo: str = Field(..., example="octocat/Hello-World", description="Format: owner/repo")
+    pitch_claims: str = Field(
+        ...,
+        example="Slide 3 claims real-time WebSocket audio processing and vector search.",
+        description="Extracted claims from pitch deck/README/video.",
+    )
+
+
+class ImplementationStatus(str, Enum):
+    REAL_LOGIC = "REAL_LOGIC"
+    MOCKED_DATA = "MOCKED_DATA"
+    EMPTY_STUB = "EMPTY_STUB"
+
+
+class VerificationStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    EXAGGERATED = "EXAGGERATED"
+    GHOST_CLAIM = "GHOST_CLAIM"
+
+
+class TechnicalFinding(BaseModel):
+    feature_category: str
+    implementation_status: ImplementationStatus
+    file_path: str
+    evidence_snippet: str
+
+
+class CodeAuditorReport(BaseModel):
+    technical_findings: List[TechnicalFinding]
+    technical_execution_score: float = Field(..., ge=0.0, le=1.0)
+
+
+class CodeCitation(BaseModel):
+    file_path: Optional[str] = None
+    line_numbers: Optional[str] = None
+
+
+class ClaimAudit(BaseModel):
+    claimed_feature: str
+    verification_status: VerificationStatus
+    code_citation: Optional[CodeCitation] = None
+    audit_rationale: str
+
+
+class ClaimMismatchReport(BaseModel):
+    claim_audits: List[ClaimAudit]
+    claim_integrity_score: float = Field(..., ge=0.0, le=1.0)
+    audit_summary: str
+
+
+class AuditJobResponse(BaseModel):
+    job_id: str
+    status: TaskStatus
+    message: str
+    created_at: str
+
+
+class AuditResultResponse(BaseModel):
+    job_id: str
+    status: TaskStatus
+    github_repo: str
+    created_at: str
+    completed_at: Optional[str] = None
+    extraction_method: Optional[str] = None
+    final_score: Optional[float] = None
+    code_audit: Optional[CodeAuditorReport] = None
+    claim_mismatch: Optional[ClaimMismatchReport] = None
+    error: Optional[str] = None
+
+
+# =====================================================================
+# 3. EXTRACTION & AI PIPELINE LOGIC
+# =====================================================================
+
+def parse_python_ast(file_path: str) -> str:
+    """Parses local Python files into AST summaries to save LLM tokens."""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            code = f.read()
+        tree = ast.parse(code)
+        imports, definitions = [], []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                imports.append(node.module or "")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                definitions.append(f"Line {node.lineno}: def {node.name}")
+
+        return (
+            f"FILE: {file_path}\n"
+            f"  [AST Imports]: {', '.join(set(filter(None, imports)))}\n"
+            f"  [AST Declarations]: {', '.join(definitions[:20])}\n"
+        )
+    except Exception:
+        return f"FILE: {file_path} (Raw parsing skipped)\n"
+
+
+def extract_via_git_clone(repo_full_name: str) -> Tuple[str, str]:
+    """Fallback: Local shallow git clone."""
+    temp_dir = tempfile.mkdtemp(prefix="hackathon_audit_")
+    repo_url = f"https://github.com/{repo_full_name}.git"
+    if gh_token:
+        repo_url = f"https://x-access-token:{gh_token}@github.com/{repo_full_name}.git"
+
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, temp_dir],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        file_summaries = []
+        files_scanned = 0
+        ignored = {".git", "node_modules", "venv", "__pycache__", "dist", "build"}
+
+        for root, dirs, files in os.walk(temp_dir):
+            dirs[:] = [d for d in dirs if d not in ignored]
+            for file_name in files:
+                if files_scanned >= 35:
+                    break
+                full_path = os.path.join(root, file_name)
+                rel_path = os.path.relpath(full_path, temp_dir)
+
+                if file_name.endswith(".py"):
+                    file_summaries.append(parse_python_ast(full_path))
+                    files_scanned += 1
+                elif file_name in {"package.json", "requirements.txt", "Dockerfile", "README.md"}:
+                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_summaries.append(f"FILE: {rel_path}\n{f.read(3000)}\n")
+                    files_scanned += 1
+
+        return "\n".join(file_summaries), "LOCAL_GIT_CLONE"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+async def fetch_codebase_context(repo_full_name: str) -> Tuple[str, str]:
+    """Non-blocking async wrapper that routes between REST API and local clone fallback."""
+    loop = asyncio.get_running_loop()
+
+    def sync_api_fetch():
+        try:
+            repo = gh_client.get_repo(repo_full_name)
+            contents = repo.get_contents("")
+            file_snippets = []
+            count = 0
+
+            while contents and count < 25:
+                item = contents.pop(0)
+                if item.type == "dir" and item.name not in {"node_modules", ".git"}:
+                    try:
+                        contents.extend(repo.get_contents(item.path))
+                    except GithubException:
+                        continue
+                elif item.type == "file" and not item.name.endswith((".png", ".jpg", ".zip")):
+                    raw_text = item.decoded_content.decode("utf-8", errors="ignore")[:3000]
+                    file_snippets.append(f"FILE: {item.path}\n{raw_text}\n")
+                    count += 1
+
+            return "\n".join(file_snippets), "GITHUB_REST_API"
+        except Exception:
+            # Fallback to local clone on rate-limit or network failure
+            return extract_via_git_clone(repo_full_name)
+
+    # Run blocking I/O operations in thread pool
+    return await loop.run_in_executor(None, sync_api_fetch)
+
+
+async def run_ai_pipeline(context_str: str, pitch_claims: str) -> Tuple[CodeAuditorReport, ClaimMismatchReport]:
+    """Executes Instructor AI Agent tasks asynchronously."""
+    loop = asyncio.get_running_loop()
+
+    def sync_agent_calls():
+        # Step 1: Code Auditor
+        code_report: CodeAuditorReport = openai_client.chat.completions.create(
+            model="gpt-4o",
+            response_model=CodeAuditorReport,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Inspect codebase context. Identify features and distinguish real working logic from mocks.",
+                },
+                {"role": "user", "content": f"Codebase:\n{context_str}"},
+            ],
+            temperature=0.1,
+        )
+
+        # Step 2: Claim Mismatch
+        mismatch_report: ClaimMismatchReport = openai_client.chat.completions.create(
+            model="gpt-4o",
+            response_model=ClaimMismatchReport,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Compare pitch claims against ground-truth code report. Classify each claim as SUPPORTED, EXAGGERATED, or GHOST_CLAIM.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Claims:\n{pitch_claims}\n\nGround Truth Code Audit:\n{code_report.model_dump_json()}",
+                },
+            ],
+            temperature=0.1,
+        )
+
+        return code_report, mismatch_report
+
+    return await loop.run_in_executor(None, sync_agent_calls)
+
+
+# =====================================================================
+# 4. BACKGROUND TASK WORKER
+# =====================================================================
+
+async def process_audit_job(job_id: str, request: AuditRequest):
+    """Background task runner that updates tasks_db state."""
+    tasks_db[job_id]["status"] = TaskStatus.PROCESSING
+
+    try:
+        # Step 1: Extract codebase
+        context_str, extraction_method = await fetch_codebase_context(request.github_repo)
+
+        # Step 2: Run Instructor Agents
+        code_report, mismatch_report = await run_ai_pipeline(context_str, request.pitch_claims)
+
+        # Step 3: Compute final score (0 - 10 scale)
+        final_score = round(
+            ((code_report.technical_execution_score * 0.5) + (mismatch_report.claim_integrity_score * 0.5)) * 10,
+            2,
+        )
+
+        # Update db state
+        tasks_db[job_id].update(
+            {
+                "status": TaskStatus.COMPLETED,
+                "completed_at": datetime.utcnow().isoformat() + "Z",
+                "extraction_method": extraction_method,
+                "final_score": final_score,
+                "code_audit": code_report.model_dump(),
+                "claim_mismatch": mismatch_report.model_dump(),
+            }
+        )
+
+    except Exception as e:
+        tasks_db[job_id].update(
+            {
+                "status": TaskStatus.FAILED,
+                "completed_at": datetime.utcnow().isoformat() + "Z",
+                "error": str(e),
+            }
+        )
+
+
+# =====================================================================
+# 5. FASTAPI ROUTE ENDPOINTS
+# =====================================================================
+
+@app.post(
+    "/api/v1/audit/jobs",
+    response_model=AuditJobResponse,
+    status_code=Status.HTTP_202_ACCEPTED,
+    summary="Submit a hackathon project for AI background auditing",
+)
+async def create_audit_job(request: AuditRequest, background_tasks: BackgroundTasks):
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    created_at = datetime.utcnow().isoformat() + "Z"
+
+    # Initialize task record
+    tasks_db[job_id] = {
+        "job_id": job_id,
+        "status": TaskStatus.PENDING,
+        "github_repo": request.github_repo,
+        "created_at": created_at,
+    }
+
+    # Dispatch to background tasks worker
+    background_tasks.add_task(process_audit_job, job_id, request)
+
+    return AuditJobResponse(
+        job_id=job_id,
+        status=TaskStatus.PENDING,
+        message="Audit job accepted and queued for background execution.",
+        created_at=created_at,
+    )
+
+
+@app.get(
+    "/api/v1/audit/jobs/{job_id}",
+    response_model=AuditResultResponse,
+    summary="Get status or final result of an audit job",
+)
+async def get_audit_job_status(job_id: str):
+    if job_id not in tasks_db:
+        raise HTTPException(status_code=404, detail=f"Audit job '{job_id}' not found.")
+
+    return tasks_db[job_id]
+
+
+# Run with: uvicorn main:app --reload
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+```
+
+---
+
+### How to Test
+
+1. **Start the FastAPI Server:**
+```bash
+python main.py
+
+```
+
+
+2. **Submit a Background Audit Request (`POST /api/v1/audit/jobs`):**
+```bash
+curl -X 'POST' \
+  'http://localhost:8000/api/v1/audit/jobs' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "github_repo": "octocat/Hello-World",
+  "pitch_claims": "Slide 2 claims dynamic greeting generation logic."
+}'
+
+```
+
+
+**Response (`202 Accepted`):**
+```json
+{
+  "job_id": "job_a1b2c3d4e5f6",
+  "status": "PENDING",
+  "message": "Audit job accepted and queued for background execution.",
+  "created_at": "2026-08-05T17:38:00Z"
+}
+
+```
+
+
+3. **Poll for the Result (`GET /api/v1/audit/jobs/job_a1b2c3d4e5f6`):**
+```bash
+curl -X 'GET' 'http://localhost:8000/api/v1/audit/jobs/job_a1b2c3d4e5f6'
+
+```

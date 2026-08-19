@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;box-sizing:border-box}
+    .slide-container{width:1280px;min-height:720px;background:#F0F4F1;color:#0E2B1E;font-family:'IBM Plex Sans',sans-serif;position:relative;overflow:hidden}
+    .header{height:167px;border-bottom:1px solid #BECBBE;padding-top:48px;padding-left:68px;padding-right:68px;display:flex;justify-content:space-between}
+    .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:#55705A;display:flex;align-items:center;gap:11px}
+    .eyebrow:before{content:'';width:28px;height:2px;background:#F8D41D}
+    .header h1{font-family:'DM Serif Display',serif;font-size:41px;line-height:1;letter-spacing:-.8px;margin-top:17px}
+    .header-note{width:290px;border-left:1px solid #C1CDC0;padding-top:5px;padding-left:22px;font-size:13px;line-height:1.48;color:#536558;margin-top:2px}
+    .content{display:grid;grid-template-columns:66% 34%;height:553px}
+    .sources{padding-top:30px;padding-left:68px;padding-right:35px}
+    .sources-label{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#617265;margin-bottom:15px}
+    .source{display:grid;grid-template-columns:54px 1fr;border-top:1px solid #C3D0C3;padding-top:17px;min-height:111px}
+    .source:last-child{border-bottom:1px solid #C3D0C3}
+    .source-num{font-family:'DM Serif Display',serif;font-size:28px;color:#B7870D;line-height:1}
+    .source-title{font-size:14px;font-weight:600;line-height:1.3;color:#173D2A}
+    .source-meta{font-family:'IBM Plex Mono',monospace;font-size:9px;line-height:1.5;letter-spacing:.1px;color:#5D6E60;margin-top:6px}
+    .source-use{font-size:11px;line-height:1.42;color:#506257;margin-top:7px}
+    .panel{background:#0E2B1E;color:#F0F4F1;padding-top:31px;padding-left:30px;padding-right:38px}
+    .panel-label{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#F8D41D}
+    .panel h2{font-family:'DM Serif Display',serif;font-size:30px;line-height:1.05;margin-top:17px}
+    .panel p{font-size:12.5px;line-height:1.5;color:#C7D8C6;margin-top:16px}
+    .assumptions{margin-top:24px;border-top:1px solid rgba(212,229,207,.34)}
+    .assumption{display:grid;grid-template-columns:29px 1fr;gap:9px;border-bottom:1px solid rgba(212,229,207,.24);padding-top:13px;min-height:54px}
+    .assumption i{font-family:'IBM Plex Mono',monospace;font-size:10px;font-style:normal;color:#F8D41D}
+    .assumption span{font-size:10.5px;line-height:1.38;color:#D6E2D4}
+    .footer{position:absolute;left:68px;right:68px;bottom:21px;font-family:'IBM Plex Mono',monospace;font-size:8.5px;line-height:1.4;color:#6B796E}
+    .footer strong{color:#173D2A}
+  </style>
+</head>
+<body>
+  <div class="slide-container">
+    <header class="header">
+      <div><div class="eyebrow">Sources and assumptions</div><h1>Ground the conversation. Validate the case.</h1></div>
+      <div class="header-note">Public references establish strategic context. The Value Fieldbook model, activation design, and prototype are proposal concepts intended for client validation.</div>
+    </header>
+    <div class="content">
+      <section class="sources">
+        <div class="sources-label">Primary public references</div>
+        <article class="source"><div class="source-num">01</div><div><div class="source-title">John Deere — “Technology and Innovation”</div><div class="source-meta">JOHNDEERE.COM · ACCESSED AUGUST 2026 · https://www.deere.com/en-us/our-company/technology-and-innovation</div><div class="source-use">Used for public context on connected machines, processed messages, precision technology, and Deere’s stated purpose of creating technology around practical value.</div></div></article>
+        <article class="source"><div class="source-num">02</div><div><div class="source-title">John Deere — “John Deere Announces its 2026 Startup Collaborators”</div><div class="source-meta">FEBRUARY 12, 2026 · https://www.deere.com/en-us/john-deere-news/2026-startup-collaborator</div><div class="source-use">Used for public context on Deere’s innovation ecosystem and 2026 exploration areas including sensing, analytics, automation, AI-driven robotics, and digital crop intelligence.</div></div></article>
+        <article class="source"><div class="source-num">03</div><div><div class="source-title">OpenAI — “John Deere transforms agriculture with AI”</div><div class="source-meta">MAY 6, 2025 · https://openai.com/index/john-deere-justin-rose/</div><div class="source-use">Used for public context on AI across the customer journey, the need to prove value before commitment, and the importance of a clear unified vision when scaling AI.</div></div></article>
+      </section>
+      <aside class="panel">
+        <div class="panel-label">Important assumptions</div>
+        <h2>Illustrative by design—until Deere validates the facts.</h2>
+        <p>The prototype and deck are conversation tools. They show how the operating model could make signals, value logic, evidence, and investment gates visible.</p>
+        <div class="assumptions">
+          <div class="assumption"><i>01</i><span>Sample ideas, value ranges, confidence scores, and portfolio figures are illustrative placeholders—not John Deere forecasts, targets, or commitments.</span></div>
+          <div class="assumption"><i>02</i><span>Any initial activation must confirm the priority domain, participants, data access, governance controls, sponsor capacity, and decision rights.</span></div>
+          <div class="assumption"><i>03</i><span>Expected benefits should be baselined with Deere’s subject-matter experts and validated through focused experiments before funding decisions are made.</span></div>
+        </div>
+      </aside>
+    </div>
+    <div class="footer"><strong>Recommended next step:</strong> co-design one bounded first activation around a priority domain, a transparent value taxonomy, and a recurring sponsor gate.</div>
+  </div>
+</body>
+</html>

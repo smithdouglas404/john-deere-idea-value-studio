@@ -1,0 +1,1 @@
+ALTER TABLE `studioProofEvents` ADD `updateExpectations` text;

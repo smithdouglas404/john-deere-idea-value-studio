@@ -1,0 +1,4 @@
+# Clean journey browser verification — 2026-08-18
+
+The managed preview rendered the clean campaign, investment case, shared event, and human judging routes successfully. A direct sandbox browser navigation to the preview root redirected to the Manus sign-in page because that browser session is not authenticated for the application. No CTA click-through was performed in that unauthenticated browser session. The managed preview screenshot validation remains the available visual evidence for the five clean paths; interactive browser confirmation requires an authenticated application session.
+A second browser attempt using `?from_webdev=1` also redirected to the Manus sign-in page. The browser session remains unauthenticated; no interactive CTA click-through can be honestly claimed until the user signs in to the application.

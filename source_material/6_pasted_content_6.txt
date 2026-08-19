@@ -1,0 +1,93 @@
+A human judge dashboard should act as an **"X-ray viewer"** rather than a black-box scoring machine. Judges under strict hackathon deadlines should be able to scan a project in **30 seconds**, see what the AI verified versus flagged, inspect evidence with one click, and submit or override scores seamlessly.
+
+---
+
+## 1. Core UI/UX Requirements
+
+* **Evidence-First Layout:** Never show an AI score without its underlying proof. Numbers should always sit next to citations (file paths, line numbers, slide timestamps).
+* **The "30-Second Glance" Standard:** High-level metrics (Code Integrity, Working Status, Pitch Match) must be visually parsed instantly using standardized badges and color coding.
+* **One-Click Evidence Verification:** Clicking any AI-flagged claim must trigger an in-app slide preview or code drawer—judges should never leave the dashboard to check GitHub or YouTube.
+* **Seamless Override & Feedback:** Human judges retain 100% final authority. If a judge disagrees with an AI finding, overriding it should take one click with an optional brief comment.
+* **Keyboard-First Navigation:** Support shortcuts (`J`/`K` to move between projects, `1-5` for quick scoring, `Enter` to submit) for power judges evaluating 20+ projects in a single session.
+
+---
+
+## 2. Recommended Dashboard Layout
+
+```
++---------------------------------------------------------------------------------------------------+
+|  ◄ Back to Projects   |  Project #08: Nexus AI Engine  |  [Status: AI Audited (High Integrity)]   |
++------------------------------------------------------+--------------------------------------------+
+|  LEFT PANEL: Project Brief & Evidence (60% Width)    |  RIGHT PANEL: Judging & Audit (40% Width)  |
+|                                                      |                                            |
+|  [Pitch Deck / Video Viewer]                         |  [AI AUDIT SUMMARY]                        |
+|  +------------------------------------------------+  |  Overall Integrity: 88%  [REAL_LOGIC]     |
+|  | [Slide 3/10: "Real-time Voice & Vector Search"]|  |  Git Commits: 24 (No bulk-push anomaly)    |
+|  +------------------------------------------------+  |                                            |
+|  [Watch Demo (2:15)] [View Deck PDF] [GitHub Repo]   |  [PITCH VS. CODE AUDIT TABS]               |
+|                                                      |  (*) All (5)  ( ) Mismatches (1)  ( ) Proof|
+|  --------------------------------------------------  |  ----------------------------------------  |
+|  PROJECT DESCRIPTION & STACK                         |  [!] EXAGGERATED CLAIM                     |
+|  "Real-time voice processing using WebSockets..."    |  Claim: "Real-time Vector Search"          |
+|  Tech Tags: [Python] [FastAPI] [Qdrant] [React]      |  AI Audit: Found hardcoded JSON response   |
+|                                                      |  Citation: backend/api/search.py:L42      |
+|  INTERACTIVE CODE / SLIDE DRAWER (Collapsible)       |  Action: [Inspect Code] [Dismiss Flag]     |
+|  +------------------------------------------------+  |  ----------------------------------------  |
+|  | backend/api/search.py                          |  |  [V] SUPPORTED CLAIM                       |
+|  | L41: def search_vectors(query):                |  |  Claim: "WebSocket Audio Stream"           |
+|  | L42:     # TODO: Connect to Qdrant             |  |  Citation: backend/ws/stream.py:L12-L88   |
+|  | L43:     return {"status": "mock_data"}        |  |  ----------------------------------------  |
+|  +------------------------------------------------+  |  HUMAN SCORECARD                           |
+|                                                      |  Technical Execution (35%):  [ 7 / 10 ]   |
+|                                                      |  Claim Integrity (25%):      [ 6 / 10 ]   |
+|                                                      |  Originality (20%):          [ 9 / 10 ]   |
+|                                                      |  Pitch & Problem Fit (20%):  [ 8 / 10 ]   |
+|                                                      |                                            |
+|                                                      |  [ Auto-Fill Scores from AI Audit ]        |
+|                                                      |  [ Submit & Next Project (Ctrl+Enter) ]    |
++------------------------------------------------------+--------------------------------------------+
+
+```
+
+---
+
+## 3. Detailed Component Breakdown
+
+### A. The Summary Health Card (Top Right)
+
+High-level badges give judges immediate context before diving into details:
+
+* **Integrity Status Badge:**
+* **Verified Logic** (Green) – Features map cleanly to working code.
+* **Heavy Mocks / UI Only** (Yellow) – Features work visually but rely on static/mocked data.
+* **Ghost / Discrepancy Flag** (Red) – Major features pitched do not exist in the repo.
+
+
+* **Commit History Indicator:** Displays commit velocity graph. Flags single bulk commits (e.g., *“95% of code pushed in 1 commit 5 minutes before deadline”*).
+
+### B. Pitch vs. Code Mismatch Feed
+
+A filtered feed categorizing every feature claim made in the submission:
+
+* **Mismatch Priority Filter:** Toggle between *All Claims*, *Mismatches Only*, and *Verified Proof*.
+* **Claim Cards:** Each card displays:
+1. **The Claim Source:** e.g., Slide 4 or Video Transcript @ 01:12.
+2. **AI Verdict:** Supported vs. Exaggerated vs. Ghost.
+3. **Interactive Citation Link:** Clicking the file path instantly opens the code drawer scrolled directly to that line.
+
+
+
+### C. In-Context Code & Asset Inspector
+
+Judges should **never navigate away** to external GitHub tabs or YouTube windows:
+
+* **Slide & Video Player:** Embedded PDF viewer and video player with timestamped markers pointing to pitch claims.
+* **Inline Code Drawer:** A slide-out Monaco/VS Code-style code reader displaying syntax-highlighted code directly inside the dashboard.
+
+### D. Human Scorecard & Override Controls
+
+* **AI Score Pre-population:** A button allowing judges to pre-fill their scoring sliders based on the AI's calculated recommendations.
+* **Manual Override Toggle:** If a judge marks an AI flag as invalid (e.g., the AI missed an API endpoint placed in an unconventional folder), the judge clicks **"Override AI"**. The dashboard logs the human decision for model retraining and adjusts the score preview.
+* **Notes & Flags for Lead Judge:** A text box for adding private notes or flagging a submission for secondary review by the Head Judge.
+
+---

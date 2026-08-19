@@ -1,0 +1,1 @@
+ALTER TABLE `studioChallengeRepositories` ADD `githubRepositoryId` varchar(32);

@@ -1,0 +1,1 @@
+ALTER TABLE `submissionAudits` ADD `processingStartedAt` timestamp;

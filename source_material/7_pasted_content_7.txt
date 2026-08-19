@@ -1,0 +1,157 @@
+The **AI Developer Talent Graph** moves beyond static, self-reported resumes. It constructs a dynamic, multidimensional developer profile by combining **structured relational data** (verified hackathon performance, code execution metrics) with **high-dimensional vector embeddings** (analyzed codebases, commit diffs, and prompt engineering telemetry).
+
+---
+
+## 1. System Architecture Pipeline
+
+```
+                                    DATA SOURCES
+┌───────────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐
+│  GitHub / Repo Diffs  │   │  Platform Telemetry   │   │  AI Co-Judge Reports  │
+│ (Code AST, File Diffs)│   │(Prompt logs, Speed)   │   │(Integrity, Complexity)│
+└───────────┬───────────┘   └───────────┬───────────┘   └───────────┬───────────┘
+            │                           │                           │
+            └───────────────────────────┼───────────────────────────┘
+                                        ▼
+                       ┌─────────────────────────────────┐
+                       │   Feature Extraction Pipeline   │
+                       └────────────────┬────────────────┘
+                                        │
+                 ┌──────────────────────┴──────────────────────┐
+                 ▼                                             ▼
+  ┌─────────────────────────────┐               ┌─────────────────────────────┐
+  │ Relational Persistence Layer│               │   Vector Embedding Engine   │
+  │ (PostgreSQL + JSON Schema)  │               │ (pgvector / Qdrant / OpenAI)│
+  └─────────────────────────────┘               └─────────────────────────────┘
+
+```
+
+---
+
+## 2. Vector Embedding Strategy & Text Formatting
+
+To search for developers semantically (e.g., *"Find a developer experienced with high-throughput WebSocket servers and vector database integrations"*), raw code files are converted into structured text blocks before generating vector embeddings.
+
+### A. Semantic Text Document Schema
+
+For each hackathon project or major repository, the background worker compiles a **Developer Performance Summary** string:
+
+```text
+DEVELOPER_PROFILE_ID: dev_98234-uuid
+PRIMARY_ROLE: Backend Engineer / Infrastructure
+TOP_SKILLS: Python, FastAPI, PgVector, AsyncIO, Docker
+
+PERFORMANCE_TELEMETRY:
+- Building Speed: 88th percentile (Fast iteration cycles)
+- Code Integrity Score: 0.94 / 1.0 (High ratio of working code vs mocked endpoints)
+- Prompt Engineering Efficiency: High (3.2 prompt iterations per working module)
+
+CODEBASE_INSIGHTS:
+Implemented asynchronous WebSocket handler in FastAPI for live audio streaming. Used PgVector for cosine similarity search across 100k+ embeddings. Wrote custom middleware for JWT authentication and rate-limiting.
+
+VERIFIED_PROJECT_SUMMARY:
+Built real-time video transcription pipeline during 24-hour hackathon. Integrates OpenAI Whisper API with Qdrant vector database.
+
+```
+
+### B. Vector Index Configuration
+
+* **Embedding Model:** `text-embedding-3-small` (1536 dimensions) or `bge-large-en-v1.5` (1024 dimensions).
+* **Index Method:** HNSW (Hierarchical Navigable Small World) with Cosine Distance for sub-50ms vector searches across millions of candidate profiles.
+
+---
+
+## 3. Relational & Vector Database Schema (PostgreSQL + `pgvector`)
+
+```sql
+-- Enable Vector Extension
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. Core Developer Profiles
+CREATE TABLE developer_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE NOT NULL, -- References primary users table
+    primary_role VARCHAR(50) NOT NULL, -- e.g. 'Frontend', 'AI/ML', 'Fullstack', 'DevOps'
+    years_experience INT DEFAULT 0,
+    github_handle VARCHAR(100),
+    linkedin_url VARCHAR(255),
+    overall_integrity_score DECIMAL(3, 2) DEFAULT 0.00, -- Aggregated across hackathons
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Verified Technical Skills (Structured Taxonomy)
+CREATE TABLE developer_skills (
+    developer_id UUID REFERENCES developer_profiles(id) ON DELETE CASCADE,
+    skill_name VARCHAR(50) NOT NULL,
+    proficiency_level VARCHAR(20) DEFAULT 'INTERMEDIATE', -- 'NOVICE', 'INTERMEDIATE', 'EXPERT'
+    verification_source VARCHAR(30) DEFAULT 'HACKATHON_CODE', -- 'SELF_REPORTED', 'HACKATHON_CODE', 'GITHUB_AUDIT'
+    confidence_score DECIMAL(3,2) DEFAULT 1.00,
+    PRIMARY KEY (developer_id, skill_name)
+);
+
+-- 3. Telemetry & Execution Metrics (Captured during live hackathons)
+CREATE TABLE developer_telemetry (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    developer_id UUID REFERENCES developer_profiles(id) ON DELETE CASCADE,
+    hackathon_id UUID NOT NULL,
+    lines_code_written INT DEFAULT 0,
+    commit_count INT DEFAULT 0,
+    bulk_commit_flag BOOLEAN DEFAULT FALSE,
+    prompt_count INT DEFAULT 0, -- Count of AI agent / LLM prompts during dev
+    time_to_first_commit_minutes INT,
+    code_integrity_score DECIMAL(3, 2), -- 0.00 to 1.00 score from AI Co-Judge
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Dynamic Vector Embeddings (Talent Search Memory)
+CREATE TABLE developer_embeddings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    developer_id UUID REFERENCES developer_profiles(id) ON DELETE CASCADE,
+    context_type VARCHAR(30) NOT NULL, -- 'OVERALL_PROFILE', 'PROJECT_CODEBASE', 'PROMPT_STYLE'
+    embedding_text TEXT NOT NULL, -- Raw text before vectorization
+    embedding_vector vector(1536) NOT NULL, -- 1536 dimensions for OpenAI embeddings
+    model_version VARCHAR(50) DEFAULT 'text-embedding-3-small',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW Vector Index for fast Cosine Similarity Search
+CREATE INDEX developer_vector_hnsw_idx 
+ON developer_embeddings 
+USING hnsw (embedding_vector vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+```
+
+---
+
+## 4. Querying the Talent Graph
+
+To find candidates using natural language (Semantic Search + Hard Filtering):
+
+```sql
+-- Search query: "Find developers with high integrity scores who build vector search / RAG pipelines in Python"
+WITH query_vector AS (
+    -- Input query vector generated by backend API
+    SELECT '[0.012, -0.034, 0.089, ...]'::vector AS vec
+)
+SELECT 
+    dp.id AS developer_id,
+    dp.primary_role,
+    dp.github_handle,
+    dp.overall_integrity_score,
+    de.embedding_text,
+    1 - (de.embedding_vector <=> qv.vec) AS similarity_score
+FROM developer_embeddings de
+JOIN developer_profiles dp ON de.developer_id = dp.id
+CROSS JOIN query_vector qv
+WHERE 
+    dp.overall_integrity_score >= 0.80 -- Filter out candidates with poor integrity / mocked submissions
+    AND de.context_type = 'OVERALL_PROFILE'
+ORDER BY de.embedding_vector <=> qv.vec ASC
+LIMIT 10;
+
+```
+
+---

@@ -1,0 +1,2 @@
+ALTER TABLE `studioInvestmentCases` ADD `originatorId` int;--> statement-breakpoint
+ALTER TABLE `studioInvestmentCases` ADD CONSTRAINT `studioInvestmentCases_originatorId_users_id_fk` FOREIGN KEY (`originatorId`) REFERENCES `users`(`id`) ON DELETE set null ON UPDATE no action;

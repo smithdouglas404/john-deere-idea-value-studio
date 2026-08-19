@@ -1,0 +1,1 @@
+ALTER TABLE `userProfiles` ADD `availabilityRoles` json;

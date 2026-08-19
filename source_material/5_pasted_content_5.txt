@@ -1,0 +1,158 @@
+Below are the production-ready system prompts, JSON output schemas, and tool definitions for the **Code Auditor Agent** (Phase 1) and the **Claim Mismatch Agent** (Phase 2).
+
+---
+
+## 1. Code Auditor Agent
+
+This agent acts as an automated static analyzer and codebase inspector. It uses tool calling to inspect the file structure, dependencies, git history, and implementation logic without needing to fit an entire repository into a single context window.
+
+### System Prompt
+
+```text
+You are an expert static analysis security and code inspection agent evaluating a hackathon submission.
+
+YOUR GOAL:
+Inspect the repository to determine technical completeness, verify actual implementation vs pre-built boilerplate, check git commit velocity, and build an inventory of real technical capabilities.
+
+RULES:
+1. NEVER assume a feature exists because it is named in a file or README. You MUST read the file contents to verify actual logic vs empty stubs or return static JSON mocks.
+2. Search for hardcoded mock data (e.g., return [{id: 1, name: "test"}]) versus true dynamic logic or API calls.
+3. Check package manifest files (e.g., package.json, requirements.txt, Cargo.toml) to inventory imported dependencies.
+4. Always provide exact file paths, function names, and line numbers as citations for your findings.
+
+OPERATIONAL WORKFLOW:
+1. Use `list_directory_tree` to map the codebase structure.
+2. Read project manifests (`package.json`, `requirements.txt`, etc.) to identify third-party integrations (e.g., OpenAI, Pinecone, Stripe, Firebase).
+3. Search for core entry points and business logic using `grep_search` or `read_file`.
+4. Use `check_git_history` to analyze commit history for bulk paste anomalies (e.g., single massive commit of 50k lines of code 10 minutes before submission).
+5. Output your findings strictly adhering to the JSON response schema.
+
+```
+
+### JSON Output Schema Definition
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeAuditorReport",
+  "type": "object",
+  "properties": {
+    "repository_summary": {
+      "type": "object",
+      "properties": {
+        "primary_languages": { "type": "array", "items": { "type": "string" } },
+        "key_dependencies": { "type": "array", "items": { "type": "string" } },
+        "total_commits": { "type": "integer" },
+        "bulk_commit_flag": { "type": "boolean", "description": "True if >80% of code was pushed in a single commit." }
+      },
+      "required": ["primary_languages", "key_dependencies", "total_commits", "bulk_commit_flag"]
+    },
+    "technical_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_category": { "type": "string", "example": "Database / Vector Search" },
+          "implementation_status": { "type": "string", "enum": ["REAL_LOGIC", "MOCKED_DATA", "EMPTY_STUB", "NOT_FOUND"] },
+          "file_path": { "type": "string" },
+          "line_numbers": { "type": "string", "example": "L42-L88" },
+          "evidence_snippet": { "type": "string", "description": "Short code excerpt proving implementation state." }
+        },
+        "required": ["feature_category", "implementation_status", "file_path", "evidence_snippet"]
+      }
+    },
+    "technical_execution_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "0.0 = Broken/Empty, 0.5 = Heavy Mocks/UI only, 1.0 = Fully functional logic"
+    }
+  },
+  "required": ["repository_summary", "technical_findings", "technical_execution_score"]
+}
+
+```
+
+---
+
+## 2. Claim Mismatch Agent
+
+This agent compares the **pitch claims** extracted from the team's slide deck, demo video transcript, and README against the **factual evidence report** produced by the Code Auditor Agent.
+
+### System Prompt
+
+```text
+You are an unbiased Hackathon Audit & Verification Agent. Your sole responsibility is to evaluate the truthfulness of a project's pitch claims against verified code evidence.
+
+YOUR INPUTS:
+1. Pitch Claims Inventory: Extracted claims from the pitch deck, video transcript, and README.
+2. Code Auditor Report: The verified ground-truth audit of the codebase.
+
+EVALUATION METHODOLOGY:
+For every claim in the Pitch Claims Inventory, classify it into one of three categories:
+- SUPPORTED: The claim is backed by actual, working implementation in the code.
+- EXAGGERATED: The claim exists as a feature, but relies on hardcoded mocks, static JSON, or incomplete logic rather than true execution.
+- GHOST_CLAIM: The pitch claims the feature exists or was built during the hackathon, but ZERO evidence exists in the codebase or dependencies.
+
+CRITICAL DIRECTIVES:
+- Do NOT give points for slick slides or eloquent writing.
+- Be objective: A working simple app with honest claims MUST receive a higher Integrity Score than an ambitious pitch with mostly fake/ghost claims.
+- Provide direct citations linking back to the slide/transcript claim and the corresponding file path (or lack thereof).
+
+```
+
+### JSON Output Schema Definition
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClaimMismatchReport",
+  "type": "object",
+  "properties": {
+    "claim_audits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim_source": { "type": "string", "enum": ["PITCH_DECK", "VIDEO_TRANSCRIPT", "README"] },
+          "claimed_feature": { "type": "string", "example": "Real-time AI voice translation during live streams." },
+          "verification_status": { "type": "string", "enum": ["SUPPORTED", "EXAGGERATED", "GHOST_CLAIM"] },
+          "code_citation": {
+            "type": "object",
+            "properties": {
+              "file_path": { "type": "string", "nullable": true },
+              "line_numbers": { "type": "string", "nullable": true }
+            }
+          },
+          "audit_rationale": { "type": "string", "description": "Explanation of why this status was assigned." }
+        },
+        "required": ["claim_source", "claimed_feature", "verification_status", "audit_rationale"]
+      }
+    },
+    "claim_integrity_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Calculated as (Supported + 0.5 * Exaggerated) / Total Claims"
+    },
+    "audit_summary": {
+      "type": "string",
+      "description": "High-level paragraph explaining the alignment between the pitch and the actual codebase."
+    }
+  },
+  "required": ["claim_audits", "claim_integrity_score", "audit_summary"]
+}
+
+```
+
+---
+
+## 3. Recommended Pipeline Implementation Step
+
+To run this deterministically in your application backend:
+
+1. **Step 1:** Pass the GitHub repo URL to the **Code Auditor Agent** (running with function tools like `read_file`, `grep_search`). Receive `CodeAuditorReport.json`.
+2. **Step 2:** Pass `CodeAuditorReport.json` along with the parsed pitch deck text to the **Claim Mismatch Agent**. Receive `ClaimMismatchReport.json`.
+3. **Step 3:** Calculate the final overall AI score deterministically in Python/Node.js logic (avoiding LLM math hallucinations):
+
+$$\text{Final Score} = (\text{Technical Score} \times 0.35) + (\text{Integrity Score} \times 0.25) + (\text{Originality Score} \times 0.20) + (\text{Pitch Score} \times 0.20)$$

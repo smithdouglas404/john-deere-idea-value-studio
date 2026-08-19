@@ -1,0 +1,250 @@
+Building a hackathon hosting platform (similar to Devpost or DoraHacks) requires managing complex relationships between users, teams, submissions, judging rubrics, and sponsor challenges.
+
+Below is a detailed breakdown of the **core feature requirements** and a **production-ready PostgreSQL database schema**.
+
+---
+
+## 1. Core Feature Requirements
+
+### A. User Management & Authentication
+
+* Multi-role system: **Participants**, **Judges**, **Organizers**, and **Sponsors**.
+* GitHub/GitLab SSO integration (essential for developer profiles and code repository verification).
+* Skills inventory, bio, location, and team-matching availability toggle.
+
+### B. Hackathon & Schedule Lifecycle
+
+* Status management: `DRAFT` $\rightarrow$ `REGISTRATION_OPEN` $\rightarrow$ `HACKING_ACTIVE` $\rightarrow$ `JUDGING_ACTIVE` $\rightarrow$ `COMPLETED`.
+* Track and prize challenge definitions (e.g., "Best AI Project", "Best Use of Polygon").
+* Event schedules, workshops, and mentor office hours.
+
+### C. Teams & Collaboration
+
+* Team creation, invite links, and join requests.
+* Maximum team size enforcement per hackathon.
+* Direct messaging or team-matching board based on missing skills.
+
+### D. Submissions & Auditing
+
+* Project metadata: title, tagline, description, pitch deck URL, video demo link, and GitHub/repo URL.
+* Multi-track submission routing.
+* Automated integration capabilities (e.g., automated commit auditing, plagiarism/duplicate checks, and pitch claim verification).
+
+### E. Judging & Scoring System
+
+* Weighted rubric parameters (e.g., Originality: 30%, Technical Execution: 40%, Design: 30%).
+* Random or workload-balanced submission assignment to judges.
+* Score aggregation, conflict detection, and leaderboards.
+
+---
+
+## 2. PostgreSQL Relational Database Schema
+
+### Entity-Relationship Diagram (ERD) Overview
+
+```text
+ ┌──────────────┐       ┌────────────────────┐       ┌─────────────────┐
+ │    Users     │──────<│ Hackathon_Registrs │>──────│   Hackathons    │
+ └──────┬───────┘       └────────────────────┘       └────────┬────────┘
+        │                                                     │
+        │ ┌──────────────┐     ┌─────────────┐                │
+        ├─┤ Team_Members │>───<│    Teams    │>───────────────┤
+        │ └──────────────┘     └──────┬──────┘                │
+        │                             │                       │
+        │                             ▼                       ▼
+        │                      ┌─────────────┐       ┌─────────────────┐
+        └─────────────────────<│ Submissions │>──────│ Tracks / Prizes │
+                               └──────┬──────┘       └─────────────────┘
+                                      │                       ▲
+                                      ▼                       │
+                               ┌─────────────┐       ┌────────┴────────┐
+                               │ Scorecards  │>──────│ Score_Criteria  │
+                               └─────────────┘       └─────────────────┘
+
+```
+
+---
+
+### SQL DDL Migration Schema
+
+```sql
+-- Enable UUID extension for secure, non-enumerable IDs
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================================
+-- 1. USERS & PROFILES
+-- =====================================================================
+CREATE TYPE user_role AS ENUM ('PARTICIPANT', 'JUDGE', 'ORGANIZER', 'ADMIN');
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    avatar_url TEXT,
+    github_handle VARCHAR(100),
+    bio TEXT,
+    skills TEXT[], -- Array of strings e.g. ARRAY['Python', 'FastAPI', 'React']
+    global_role user_role NOT NULL DEFAULT 'PARTICIPANT',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =====================================================================
+-- 2. HACKATHONS & TRACKS
+-- =====================================================================
+CREATE TYPE hackathon_status AS ENUM (
+    'DRAFT', 'REGISTRATION_OPEN', 'HACKING_ACTIVE', 'JUDGING_ACTIVE', 'COMPLETED'
+);
+
+CREATE TABLE hackathons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    slug VARCHAR(100) UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    tagline TEXT,
+    description TEXT,
+    organizer_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    status hackathon_status NOT NULL DEFAULT 'DRAFT',
+    max_team_size INT NOT NULL DEFAULT 4,
+    registration_start TIMESTAMPTZ NOT NULL,
+    registration_end TIMESTAMPTZ NOT NULL,
+    hacking_start TIMESTAMPTZ NOT NULL,
+    hacking_end TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE tracks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    title VARCHAR(150) NOT NULL, -- e.g. "Best AI/ML Application"
+    description TEXT,
+    prize_amount NUMERIC(10, 2),
+    sponsor_name VARCHAR(100)
+);
+
+CREATE TABLE hackathon_registrations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role user_role NOT NULL DEFAULT 'PARTICIPANT',
+    registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(hackathon_id, user_id)
+);
+
+-- =====================================================================
+-- 3. TEAMS & MEMBERSHIP
+-- =====================================================================
+CREATE TABLE teams (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    invite_code VARCHAR(20) UNIQUE NOT NULL,
+    looking_for_skills TEXT[],
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(hackathon_id, name)
+);
+
+CREATE TABLE team_members (
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_leader BOOLEAN NOT NULL DEFAULT FALSE,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (team_id, user_id)
+);
+
+-- =====================================================================
+-- 4. SUBMISSIONS & AUDITING
+-- =====================================================================
+CREATE TABLE submissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    team_id UUID UNIQUE NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    tagline VARCHAR(255),
+    description TEXT NOT NULL,
+    github_url VARCHAR(255) NOT NULL,
+    demo_video_url VARCHAR(255),
+    pitch_deck_url VARCHAR(255),
+    is_submitted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Junction table for submissions targeting multiple tracks/prizes
+CREATE TABLE submission_tracks (
+    submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    track_id UUID NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    PRIMARY KEY (submission_id, track_id)
+);
+
+-- Stores automated code audit/verification execution (e.g. LLM/Instructor agent runs)
+CREATE TABLE submission_audits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    technical_score NUMERIC(3, 2), -- Score 0.00 to 10.00
+    integrity_score NUMERIC(3, 2),
+    audit_report_json JSONB NOT NULL,
+    executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =====================================================================
+-- 5. JUDGING & RUBRICS
+-- =====================================================================
+CREATE TABLE score_criteria (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    title VARCHAR(100) NOT NULL, -- e.g. "Technical Complexity"
+    weight NUMERIC(3, 2) NOT NULL DEFAULT 1.00, -- Multiplier weight e.g. 0.30 (30%)
+    max_points INT NOT NULL DEFAULT 10
+);
+
+CREATE TABLE scorecards (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    judge_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notes TEXT,
+    is_finalized BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(submission_id, judge_id)
+);
+
+CREATE TABLE scorecard_items (
+    scorecard_id UUID NOT NULL REFERENCES scorecards(id) ON DELETE CASCADE,
+    criteria_id UUID NOT NULL REFERENCES score_criteria(id) ON DELETE CASCADE,
+    score INT NOT NULL,
+    PRIMARY KEY (scorecard_id, criteria_id)
+);
+
+-- Indexing for high-traffic query patterns
+CREATE INDEX idx_submissions_hackathon ON submissions(hackathon_id);
+CREATE INDEX idx_teams_hackathon ON teams(hackathon_id);
+CREATE INDEX idx_scorecards_submission ON scorecards(submission_id);
+CREATE INDEX idx_audits_submission ON submission_audits(submission_id);
+
+```
+
+---
+
+## 3. High-Performance Score Aggregation Query
+
+When judging closes, run this query to calculate weighted scores across all criteria and judges for a hackathon leaderboard:
+
+```sql
+SELECT 
+    sub.id AS submission_id,
+    sub.title AS project_title,
+    t.name AS team_name,
+    COUNT(DISTINCT sc.judge_id) AS total_judges_reviewed,
+    ROUND(
+        SUM(sci.score * crit.weight) / COUNT(DISTINCT sc.judge_id), 2
+    ) AS final_weighted_score
+FROM submissions sub
+JOIN teams t ON sub.team_id = t.id
+JOIN scorecards sc ON sc.submission_id = sub.id
+JOIN scorecard_items sci ON sci.scorecard_id = sc.id
+JOIN score_criteria crit ON sci.criteria_id = crit.id
+WHERE sub.hackathon_id = 'YOUR_HACKATHON_UUID_HERE'
+  AND sc.is_finalized = TRUE
+GROUP BY sub.id, sub.title, t.name
+ORDER BY final_weighted_score DESC;
+
+```

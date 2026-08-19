@@ -1,0 +1,1 @@
+ALTER TABLE `studioInvestmentCases` MODIFY COLUMN `status` enum('submitted','returned','approved_for_proof','archived','investment_review','archived_learning') NOT NULL DEFAULT 'submitted';

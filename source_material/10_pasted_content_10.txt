@@ -1,0 +1,277 @@
+Below is the updated Python script. It integrates `PyGithub` to fetch a repository's metadata, commit history, and file contents directly via the GitHub REST API, formats them into a structured text dump, and passes them to your Instructor-powered pipeline.
+
+---
+
+### Additional Dependency
+
+Install `PyGithub` along with the existing pipeline requirements:
+
+```bash
+pip install PyGithub instructor openai pydantic
+
+```
+
+Set your GitHub Personal Access Token (PAT) and OpenAI API Key:
+
+```bash
+export GITHUB_TOKEN="your-github-token"
+export OPENAI_API_KEY="your-openai-api-key"
+
+```
+
+---
+
+### Updated Script: `github_hackathon_audit_pipeline.py`
+
+```python
+import json
+import os
+from enum import Enum
+from typing import List, Optional, Tuple
+from pydantic import BaseModel, Field
+import instructor
+from openai import OpenAI
+from github import Github, GithubException
+
+# Initialize clients
+openai_client = instructor.from_openai(OpenAI())
+# Requires GITHUB_TOKEN environment variable for higher rate limits
+gh_token = os.getenv("GITHUB_TOKEN")
+gh_client = Github(gh_token) if gh_token else Github()
+
+# =====================================================================
+# 1. GITHUB REST API EXTRACTION HELPER
+# =====================================================================
+
+def fetch_github_repository_data(repo_full_name: str, max_files: int = 40) -> Tuple[str, dict]:
+    """
+    Fetches commit history and key source file contents using the GitHub REST API.
+    
+    :param repo_full_name: e.g. "octocat/Hello-World"
+    :param max_files: Max files to inspect to avoid exceeding API/token limits
+    :return: A tuple of (formatted_codebase_context_str, metadata_dict)
+    """
+    try:
+        repo = gh_client.get_repo(repo_full_name)
+    except GithubException as e:
+        raise ValueError(f"Failed to fetch repo '{repo_full_name}': {e.data.get('message', str(e))}")
+
+    # 1. Fetch Commit Telemetry
+    commits = list(repo.get_commits())
+    total_commits = len(commits)
+    
+    # Check for bulk commit anomaly (>75% of commits in a single batch/short window)
+    bulk_commit_flag = False
+    if total_commits > 0:
+        first_commit_time = commits[-1].commit.author.date
+        last_commit_time = commits[0].commit.author.date
+        time_delta_hours = (last_commit_time - first_commit_time).total_seconds() / 3600
+        # Flag if 10+ commits were pushed in less than 30 minutes
+        if total_commits >= 10 and time_delta_hours < 0.5:
+            bulk_commit_flag = True
+
+    telemetry_header = (
+        f"REPO: {repo.full_name}\n"
+        f"DEFAULT BRANCH: {repo.default_branch}\n"
+        f"TOTAL COMMITS: {total_commits}\n"
+        f"BULK COMMIT FLAG: {bulk_commit_flag}\n"
+        f"LAST COMMIT DATE: {commits[0].commit.author.date if total_commits > 0 else 'N/A'}\n"
+        "--------------------------------------------------\n"
+    )
+
+    # 2. Recursively Traverse & Fetch File Contents
+    file_contents = []
+    ignored_extensions = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf", ".zip", ".tar", ".gz", ".lock", ".mp4"}
+    ignored_dirs = {"node_modules", ".git", "build", "dist", "__pycache__", "venv", ".next"}
+
+    contents_queue = repo.get_contents("")
+    file_count = 0
+
+    while contents_queue and file_count < max_files:
+        file_content = contents_queue.pop(0) if isinstance(contents_queue, list) else contents_queue
+        
+        if file_content.type == "dir":
+            if file_content.name not in ignored_dirs:
+                try:
+                    contents_queue.extend(repo.get_contents(file_content.path))
+                except GithubException:
+                    continue
+        else:
+            _, ext = os.path.splitext(file_content.name)
+            if ext.lower() not in ignored_extensions:
+                try:
+                    # Decode content string
+                    raw_text = file_content.decoded_content.decode("utf-8", errors="ignore")
+                    
+                    # Truncate extremely large files to keep context window clean
+                    if len(raw_text) > 8000:
+                        raw_text = raw_text[:8000] + "\n... [TRUNCATED FILE CONTENT]"
+                        
+                    formatted_file = f"FILE: {file_content.path}\n{raw_text}\n"
+                    file_contents.append(formatted_file)
+                    file_count += 1
+                except Exception:
+                    continue
+
+    full_codebase_context = telemetry_header + "\n".join(file_contents)
+    metadata = {
+        "total_commits": total_commits,
+        "bulk_commit_flag": bulk_commit_flag,
+        "files_inspected": file_count
+    }
+    
+    return full_codebase_context, metadata
+
+
+# =====================================================================
+# 2. PYDANTIC SCHEMAS
+# =====================================================================
+
+class ImplementationStatus(str, Enum):
+    REAL_LOGIC = "REAL_LOGIC"
+    MOCKED_DATA = "MOCKED_DATA"
+    EMPTY_STUB = "EMPTY_STUB"
+    NOT_FOUND = "NOT_FOUND"
+
+class VerificationStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    EXAGGERATED = "EXAGGERATED"
+    GHOST_CLAIM = "GHOST_CLAIM"
+
+class ClaimSource(str, Enum):
+    PITCH_DECK = "PITCH_DECK"
+    VIDEO_TRANSCRIPT = "VIDEO_TRANSCRIPT"
+    README = "README"
+
+class TechnicalFinding(BaseModel):
+    feature_category: str
+    implementation_status: ImplementationStatus
+    file_path: str
+    line_numbers: str
+    evidence_snippet: str
+
+class RepositorySummary(BaseModel):
+    primary_languages: List[str]
+    key_dependencies: List[str]
+    total_commits: int
+    bulk_commit_flag: bool
+
+class CodeAuditorReport(BaseModel):
+    repository_summary: RepositorySummary
+    technical_findings: List[TechnicalFinding]
+    technical_execution_score: float = Field(..., ge=0.0, le=1.0)
+
+class CodeCitation(BaseModel):
+    file_path: Optional[str] = None
+    line_numbers: Optional[str] = None
+
+class ClaimAudit(BaseModel):
+    claim_source: ClaimSource
+    claimed_feature: str
+    verification_status: VerificationStatus
+    code_citation: Optional[CodeCitation] = None
+    audit_rationale: str
+
+class ClaimMismatchReport(BaseModel):
+    claim_audits: List[ClaimAudit]
+    claim_integrity_score: float = Field(..., ge=0.0, le=1.0)
+    audit_summary: str
+
+
+# =====================================================================
+# 3. AGENT PIPELINE FUNCTIONS
+# =====================================================================
+
+def run_code_auditor(codebase_context: str) -> CodeAuditorReport:
+    """Phase 1: Analyzes fetched GitHub code and git metadata."""
+    system_prompt = (
+        "You are an expert static analysis security and code inspection agent evaluating a hackathon submission.\n"
+        "Inspect the repository context to determine technical completeness, verify actual implementation "
+        "vs pre-built boilerplate or mocks, check git history, and build an inventory of technical capabilities.\n"
+        "Provide exact file paths, line numbers, and evidence snippets for your findings."
+    )
+
+    return openai_client.chat.completions.create(
+        model="gpt-4o",
+        response_model=CodeAuditorReport,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Inspect the following GitHub codebase dump and produce an audit report:\n\n{codebase_context}"}
+        ],
+        temperature=0.1
+    )
+
+
+def run_claim_mismatch_agent(pitch_claims_text: str, code_report: CodeAuditorReport) -> ClaimMismatchReport:
+    """Phase 2: Compares pitch claims against Phase 1 ground-truth code audit."""
+    system_prompt = (
+        "You are an unbiased Hackathon Audit & Verification Agent.\n"
+        "Evaluate the truthfulness of a project's pitch claims against verified code evidence.\n\n"
+        "EVALUATION CRITERIA:\n"
+        "- SUPPORTED: Backed by actual working code implementation.\n"
+        "- EXAGGERATED: Exists as a feature but relies on hardcoded mocks, static JSON, or incomplete logic.\n"
+        "- GHOST_CLAIM: Pitched as operational, but ZERO evidence exists in code or dependencies."
+    )
+
+    user_payload = f"""
+    === PITCH CLAIMS INVENTORY ===
+    {pitch_claims_text}
+
+    === VERIFIED CODE AUDIT REPORT (GROUND TRUTH) ===
+    {code_report.model_dump_json(indent=2)}
+    """
+
+    return openai_client.chat.completions.create(
+        model="gpt-4o",
+        response_model=ClaimMismatchReport,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_payload}
+        ],
+        temperature=0.1
+    )
+
+
+# =====================================================================
+# 4. EXECUTION
+# =====================================================================
+
+if __name__ == "__main__":
+    # GitHub Repository to audit (e.g. "owner/repository")
+    TARGET_REPO = "octocat/Hello-World"  # Replace with actual hackathon repo
+    
+    # Sample pitch claims provided by team submission
+    sample_pitch_claims = """
+    Source: Pitch Deck - Slide 2
+    Claim: Implemented dynamic hello world response greeting generator.
+
+    Source: README.md
+    Claim: Enterprise billing and subscription engine powered by Stripe API.
+    """
+
+    print(f"📦 [Step 1/4] Fetching repository data from GitHub REST API ({TARGET_REPO})...")
+    codebase_context, repo_meta = fetch_github_repository_data(TARGET_REPO)
+    print(f"   Successfully fetched {repo_meta['files_inspected']} files across {repo_meta['total_commits']} commits.\n")
+
+    print("🚀 [Step 2/4] Running Code Auditor Agent...")
+    code_audit_result = run_code_auditor(codebase_context)
+    print("✅ Code Audit Complete.")
+    print(f"   Technical Execution Score: {code_audit_result.technical_execution_score}\n")
+
+    print("🚀 [Step 3/4] Running Claim Mismatch Agent...")
+    mismatch_result = run_claim_mismatch_agent(sample_pitch_claims, code_audit_result)
+    print("✅ Mismatch Analysis Complete.")
+    print(f"   Claim Integrity Score: {mismatch_result.claim_integrity_score}\n")
+
+    print("==================================================")
+    print("=== AUDIT REPORT BREAKDOWN ===")
+    print("==================================================")
+    for audit in mismatch_result.claim_audits:
+        print(f"• [{audit.verification_status.value}] {audit.claimed_feature}")
+        print(f"  Source: {audit.claim_source.value}")
+        print(f"  Rationale: {audit.audit_rationale}")
+        if audit.code_citation and audit.code_citation.file_path:
+            print(f"  Citation: {audit.code_citation.file_path}:{audit.code_citation.line_numbers}")
+        print()
+
+```

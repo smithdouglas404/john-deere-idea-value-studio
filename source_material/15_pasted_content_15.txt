@@ -1,0 +1,122 @@
+An **HNSW (Hierarchical Navigable Small World)** index in `pgvector` provides fast approximate nearest neighbor (ANN) searches with a high recall rate. It builds a multi-layer graph of your vectors, offering significantly better query latency and throughput than standard `IVFFlat` indexes without needing a training step.
+
+---
+
+### 1. SQL Migration for HNSW Index Creation
+
+Run the following SQL statement on your PostgreSQL instance.
+
+*Note: Creating an HNSW index on a large table can consume significant memory during execution. Increase `maintenance_work_mem` for the duration of the index build.*
+
+```sql
+-- 1. Ensure the vector extension is loaded
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. Allocate extra memory for index creation (Recommended for larger datasets)
+SET maintenance_work_mem = '512MB';
+
+-- 3. Create the HNSW index on the vector column using cosine distance operator (vector_cosine_ops)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_code_embeddings_hnsw
+ON code_embeddings 
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+```
+
+#### Tuning Parameters (`m` and `ef_construction`)
+
+| Parameter | Default | Recommended Range | Description |
+| --- | --- | --- | --- |
+| **`m`** | `16` | `16` – `64` | Maximum number of bidirectional links created per node. Higher values improve search accuracy and recall for high-dimensional vectors (e.g., 1536d), but increase index size and build time. |
+| **`ef_construction`** | `64` | `64` – `200` | Size of the dynamic candidate list evaluated during index construction. Increasing this improves index quality and search recall at the cost of longer build times. |
+
+> **Distance Operator Selection:**
+> * **Cosine Distance (`vector_cosine_ops`):** Best for text/code embeddings (e.g., OpenAI `text-embedding-3-small`). Uses the `<=>` query operator.
+> * **L2 Distance / Euclidean (`vector_l2_ops`):** Uses the `<->` query operator.
+> * **Inner Product (`vector_ip_ops`):** Best for normalized embeddings. Uses the `<#>` query operator.
+> 
+> 
+
+---
+
+### 2. Updating SQLAlchemy Models in Python
+
+Update your SQLAlchemy model definition in your background worker or API code to inform SQLAlchemy of the HNSW index.
+
+```python
+from sqlalchemy import Column, String, Text, DateTime, Index
+from sqlalchemy.orm import declarative_base
+from pgvector.sqlalchemy import Vector
+from datetime import datetime
+
+Base = declarative_base()
+
+EMBEDDING_DIM = 1536
+
+class CodeEmbedding(Base):
+    __tablename__ = "code_embeddings"
+
+    id = Column(String(255), primary_key=True)
+    repo_name = Column(String(255), nullable=False, index=True)
+    commit_sha = Column(String(40), nullable=False)
+    file_path = Column(Text, nullable=False)
+    content_chunk = Column(Text, nullable=False)
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        # Declare HNSW Index using pgvector's vector_cosine_ops
+        Index(
+            "idx_code_embeddings_hnsw",
+            embedding,
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+```
+
+---
+
+### 3. Query Time Tuning (`hnsw.ef_search`)
+
+When executing similarity searches, you can dynamically tune the balance between **speed** and **recall accuracy** at the session or transaction level using `hnsw.ef_search`:
+
+```sql
+-- Increase candidate list size during search (Default is 40)
+-- Higher values = higher recall / accuracy, slightly higher latency.
+SET hnsw.ef_search = 100;
+
+-- Execute similarity query using the cosine distance operator (<=>)
+SELECT id, repo_name, file_path, content_chunk, 1 - (embedding <=> '[0.012, -0.043, ...]') AS similarity
+FROM code_embeddings
+WHERE repo_name = 'octocat/Hello-World'
+ORDER BY embedding <=> '[0.012, -0.043, ...]'
+LIMIT 5;
+
+```
+
+In Python with SQLAlchemy:
+
+```python
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+def search_similar_code(db: Session, query_vector: list[float], limit: int = 5):
+    # Set search depth for the current transaction
+    db.execute(text("SET LOCAL hnsw.ef_search = 100;"))
+    
+    # Query using cosine distance operator (<=>)
+    results = (
+        db.query(
+            CodeEmbedding,
+            CodeEmbedding.embedding.cosine_distance(query_vector).label("distance")
+        )
+        .order_by("distance")
+        .limit(limit)
+        .all()
+    )
+    return results
+
+```

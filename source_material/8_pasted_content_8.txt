@@ -1,0 +1,241 @@
+To power the **Human Judge Dashboard UI**, the backend API needs to provide endpoints for fetching assigned project queues, retrieving complete audit evidence (including pitch vs. code claim checks), submitting/overriding scores, and fetching inline code citations.
+
+Here is the RESTful API specification, endpoint breakdown, and JSON payloads.
+
+---
+
+## API Summary Matrix
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/judging/hackathons/{hackathon_id}/assignments` | Fetch assigned project queue with status & progress |
+| `GET` | `/api/v1/judging/projects/{project_id}/audit-report` | Fetch full project evidence, deck claims, and code audit |
+| `GET` | `/api/v1/judging/projects/{project_id}/code-citation` | Stream/fetch file contents and line snippets for the code viewer drawer |
+| `POST` | `/api/v1/judging/projects/{project_id}/scores` | Submit human scores, notes, and AI overrides |
+
+---
+
+## 1. Get Assigned Projects Queue
+
+Retrieves all submissions assigned to the authenticated judge for a specific hackathon, including progress states and summary AI flags.
+
+### Request
+
+```http
+GET /api/v1/judging/hackathons/hack_9823a-uuid/assignments HTTP/1.1
+Authorization: Bearer <judge_jwt_token>
+
+```
+
+### Response (`200 OK`)
+
+```json
+{
+  "hackathon_id": "hack_9823a-uuid",
+  "judge_id": "usr_4412a-uuid",
+  "total_assigned": 12,
+  "completed_count": 4,
+  "assignments": [
+    {
+      "project_id": "prj_8819b-uuid",
+      "project_number": 8,
+      "title": "Nexus AI Engine",
+      "tagline": "Real-time voice processing using WebSockets & Vector DBs",
+      "track_name": "Best AI / Infrastructure Track",
+      "status": "COMPLETED",
+      "ai_audit_summary": {
+        "integrity_status": "VERIFIED_LOGIC",
+        "integrity_score": 0.88,
+        "mismatch_count": 0,
+        "bulk_commit_flag": false
+      },
+      "human_score": {
+        "total_score": 30.0,
+        "submitted_at": "2026-08-05T14:22:10Z"
+      }
+    },
+    {
+      "project_id": "prj_9012c-uuid",
+      "project_number": 9,
+      "title": "OmniVoice",
+      "tagline": "Autonomous speech agent for customer service",
+      "track_name": "Best AI / Infrastructure Track",
+      "status": "PENDING",
+      "ai_audit_summary": {
+        "integrity_status": "HEAVY_MOCKS",
+        "integrity_score": 0.54,
+        "mismatch_count": 2,
+        "bulk_commit_flag": true
+      },
+      "human_score": null
+    }
+  ]
+}
+
+```
+
+---
+
+## 2. Get Project Evidence & AI Audit Report
+
+Returns the comprehensive project payload required to render the left (Media/Brief) and right (Audit/Scores) panels of the judge dashboard.
+
+### Request
+
+```http
+GET /api/v1/judging/projects/prj_9012c-uuid/audit-report HTTP/1.1
+Authorization: Bearer <judge_jwt_token>
+
+```
+
+### Response (`200 OK`)
+
+```json
+{
+  "project_id": "prj_9012c-uuid",
+  "title": "OmniVoice",
+  "tagline": "Autonomous speech agent for customer service",
+  "description": "OmniVoice processes live customer calls with sub-200ms latency...",
+  "team": {
+    "team_id": "tm_1029a-uuid",
+    "name": "Team Neural",
+    "members": [
+      { "name": "Sarah Chen", "role": "Fullstack Engineer", "github_handle": "schen" },
+      { "name": "Alex Rivera", "role": "ML Engineer", "github_handle": "arivera" }
+    ]
+  },
+  "media_assets": {
+    "pitch_deck_url": "https://cdn.hackplatform.com/decks/prj_9012c.pdf",
+    "demo_video_url": "https://youtube.com/watch?v=example",
+    "github_repository_url": "https://github.com/team-neural/omnivoice"
+  },
+  "ai_audit": {
+    "generated_at": "2026-08-05T12:00:00Z",
+    "overall_integrity_score": 0.54,
+    "suggested_scores": {
+      "technical_execution": 5,
+      "claim_integrity": 5,
+      "originality": 8,
+      "pitch_fit": 7
+    },
+    "git_telemetry": {
+      "total_commits": 14,
+      "bulk_commit_flag": true,
+      "commit_insight": "88% of codebase was pushed in 1 commit 8 minutes before deadline."
+    },
+    "claims_audits": [
+      {
+        "claim_id": "clm_01",
+        "source": "PITCH_DECK",
+        "source_reference": "Slide 3: Real-time Vector Search",
+        "claimed_feature": "Sub-50ms similarity search over 100k vectors using Qdrant.",
+        "verification_status": "EXAGGERATED",
+        "audit_rationale": "Backend endpoint returns static JSON array. No active Qdrant connection found in backend service.",
+        "citation": {
+          "file_path": "backend/api/search.py",
+          "line_numbers": "41-45",
+          "snippet_preview": "def search_vectors(query):\n    # TODO: Connect to Qdrant\n    return [{'id': 1, 'score': 0.99}]"
+        }
+      },
+      {
+        "claim_id": "clm_02",
+        "source": "VIDEO_TRANSCRIPT",
+        "source_reference": "Timestamp 01:12",
+        "claimed_feature": "WebSocket stream audio ingestion pipeline.",
+        "verification_status": "SUPPORTED",
+        "audit_rationale": "Working AsyncIO WebSocket endpoint found with audio chunk buffer implementation.",
+        "citation": {
+          "file_path": "backend/ws/stream.py",
+          "line_numbers": "12-38",
+          "snippet_preview": "async def handle_audio_stream(websocket, path):\n    while True:\n        data = await websocket.recv()..."
+        }
+      }
+    ]
+  },
+  "rubric_criteria": [
+    { "id": "crit_tech", "title": "Technical Execution", "weight": 0.35, "max_score": 10 },
+    { "id": "crit_integrity", "title": "Claim Integrity", "weight": 0.25, "max_score": 10 },
+    { "id": "crit_orig", "title": "Originality", "weight": 0.20, "max_score": 10 },
+    { "id": "crit_pitch", "title": "Pitch & Problem Fit", "weight": 0.20, "max_score": 10 }
+  ]
+}
+
+```
+
+---
+
+## 3. Fetch File Code Citation
+
+Fetches code snippets or full files to populate the dashboard's embedded code drawer without forcing judges to navigate to external GitHub repos.
+
+### Request
+
+```http
+GET /api/v1/judging/projects/prj_9012c-uuid/code-citation?file_path=backend/api/search.py&highlight_lines=41-45 HTTP/1.1
+Authorization: Bearer <judge_jwt_token>
+
+```
+
+### Response (`200 OK`)
+
+```json
+{
+  "project_id": "prj_9012c-uuid",
+  "file_path": "backend/api/search.py",
+  "language": "python",
+  "highlight_lines": [41, 42, 43, 44, 45],
+  "content": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get('/search')\ndef search_vectors(query: str):\n    # TODO: Connect to Qdrant vector database\n    # Currently returning static mock array for testing\n    return [\n        {'id': 'vec_01', 'score': 0.98, 'text': 'Mock result 1'},\n        {'id': 'vec_02', 'score': 0.91, 'text': 'Mock result 2'}\n    ]\n"
+}
+
+```
+
+---
+
+## 4. Submit Human Scores & Overrides
+
+Submits human judge scores, private notes, and optional AI audit overrides (e.g., if a judge disagrees with a claim mismatch flag).
+
+### Request
+
+```http
+POST /api/v1/judging/projects/prj_9012c-uuid/scores HTTP/1.1
+Authorization: Bearer <judge_jwt_token>
+Content-Type: application/json
+
+{
+  "scores": [
+    { "criterion_id": "crit_tech", "score": 6 },
+    { "criterion_id": "crit_integrity", "score": 5 },
+    { "criterion_id": "crit_orig", "score": 8 },
+    { "criterion_id": "crit_pitch", "score": 7 }
+  ],
+  "ai_overrides": [
+    {
+      "claim_id": "clm_01",
+      "action": "OVERRIDE_DISMISS",
+      "reason": "Team explained in demo video that vector search was simulated due to API rate limits during hacking hours."
+    }
+  ],
+  "judge_feedback": {
+    "private_notes": "Good pitch, but backend is mostly mocked. Fair execution for 24 hours.",
+    "flag_for_head_judge": false
+  }
+}
+
+```
+
+### Response (`201 Created`)
+
+```json
+{
+  "status": "SUCCESS",
+  "submission_id": "sub_7721a-uuid",
+  "project_id": "prj_9012c-uuid",
+  "weighted_score": 6.35,
+  "submitted_at": "2026-08-05T17:34:00Z",
+  "next_project_id": "prj_9013d-uuid"
+}
+
+```
+
+---

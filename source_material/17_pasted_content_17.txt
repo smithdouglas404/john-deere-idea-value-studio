@@ -1,0 +1,195 @@
+Below is a complete, production-ready PostgreSQL Row Level Security (RLS) implementation that restricts judges so they can **only view and score submissions explicitly assigned to them**.
+
+---
+
+### 1. Database Schema Additions for Judge Assignments
+
+First, create a `judge_assignments` table to track which judges are assigned to evaluate which submissions.
+
+```sql
+-- Junction table mapping judges to assigned submissions
+CREATE TABLE IF NOT EXISTS judge_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hackathon_id UUID NOT NULL REFERENCES hackathons(id) ON DELETE CASCADE,
+    submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    judge_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(submission_id, judge_id)
+);
+
+CREATE INDEX idx_judge_assignments_judge ON judge_assignments(judge_id);
+CREATE INDEX idx_judge_assignments_submission ON judge_assignments(submission_id);
+
+```
+
+---
+
+### 2. Session Context Configuration
+
+In applications using PostgreSQL RLS (such as Supabase, PostGraphile, or custom Node.js/Python backends), the active user's ID is set in the session variable `app.current_user_id` before executing queries.
+
+To set this in your database session per transaction/request:
+
+```sql
+-- Run this at the start of an incoming request session
+SET LOCAL app.current_user_id = '00000000-0000-0000-0000-000000000000'; -- Replace with active user's UUID
+
+```
+
+A helper function simplifies checking user roles inside RLS policies:
+
+```sql
+CREATE OR REPLACE FUNCTION current_user_id() 
+RETURNS UUID AS $$
+BEGIN
+    RETURN NULLIF(current_setting('app.current_user_id', true), '')::UUID;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION is_admin_or_organizer() 
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM users 
+        WHERE id = current_user_id() 
+          AND global_role IN ('ADMIN', 'ORGANIZER')
+    );
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+```
+
+---
+
+### 3. Enabling RLS & Defining Policies
+
+Now, enable Row Level Security on `submissions`, `scorecards`, and `scorecard_items`.
+
+#### A. Submissions Table Policies
+
+Judges can only `SELECT` submissions where an entry exists in `judge_assignments`.
+
+```sql
+ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
+
+-- 1. SELECT Policy: Admins/Organizers see all; Judges see ONLY assigned submissions
+CREATE POLICY judge_select_assigned_submissions ON submissions
+FOR SELECT
+USING (
+    is_admin_or_organizer()
+    OR EXISTS (
+        SELECT 1 FROM judge_assignments ja
+        WHERE ja.submission_id = submissions.id
+          AND ja.judge_id = current_user_id()
+    )
+);
+
+```
+
+---
+
+#### B. Scorecards Table Policies
+
+Judges can only view, insert, or update scorecards for submissions assigned to them, and they can only set `judge_id` to their own user ID.
+
+```sql
+ALTER TABLE scorecards ENABLE ROW LEVEL SECURITY;
+
+-- 1. SELECT Policy: Judges see only their own scorecards (or assigned submission scorecards)
+CREATE POLICY judge_select_own_scorecards ON scorecards
+FOR SELECT
+USING (
+    is_admin_or_organizer()
+    OR judge_id = current_user_id()
+);
+
+-- 2. INSERT Policy: Judges can only create scorecards for assigned submissions
+CREATE POLICY judge_insert_own_scorecards ON scorecards
+FOR INSERT
+WITH CHECK (
+    judge_id = current_user_id()
+    AND EXISTS (
+        SELECT 1 FROM judge_assignments ja
+        WHERE ja.submission_id = scorecards.submission_id
+          AND ja.judge_id = current_user_id()
+    )
+);
+
+-- 3. UPDATE Policy: Judges can edit their scorecards only if not finalized
+CREATE POLICY judge_update_own_scorecards ON scorecards
+FOR UPDATE
+USING (
+    judge_id = current_user_id() 
+    AND is_finalized = FALSE
+)
+WITH CHECK (
+    judge_id = current_user_id()
+);
+
+```
+
+---
+
+#### C. Scorecard Items Table Policies
+
+Grants access to individual score criteria items based on ownership of the parent `scorecards` row.
+
+```sql
+ALTER TABLE scorecard_items ENABLE ROW LEVEL SECURITY;
+
+-- 1. SELECT Policy
+CREATE POLICY judge_select_own_scorecard_items ON scorecard_items
+FOR SELECT
+USING (
+    is_admin_or_organizer()
+    OR EXISTS (
+        SELECT 1 FROM scorecards sc
+        WHERE sc.id = scorecard_items.scorecard_id
+          AND sc.judge_id = current_user_id()
+    )
+);
+
+-- 2. INSERT / UPDATE Policy
+CREATE POLICY judge_modify_own_scorecard_items ON scorecard_items
+FOR ALL
+USING (
+    EXISTS (
+        SELECT 1 FROM scorecards sc
+        WHERE sc.id = scorecard_items.scorecard_id
+          AND sc.judge_id = current_user_id()
+          AND sc.is_finalized = FALSE
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM scorecards sc
+        WHERE sc.id = scorecard_items.scorecard_id
+          AND sc.judge_id = current_user_id()
+          AND sc.is_finalized = FALSE
+    )
+);
+
+```
+
+---
+
+### 4. Testing the Policies
+
+You can verify that isolation works using a transaction test block:
+
+```sql
+BEGIN;
+
+-- 1. Simulate Judge A ('11111111-1111-1111-1111-111111111111')
+SET LOCAL app.current_user_id = '11111111-1111-1111-1111-111111111111';
+
+-- Judge A attempts to view submissions (Will only return rows in judge_assignments for Judge A)
+SELECT id, title, github_url FROM submissions;
+
+-- Judge A attempts to submit a score for an unassigned submission (Will raise RLS policy violation error)
+INSERT INTO scorecards (submission_id, judge_id, notes) 
+VALUES ('99999999-9999-9999-9999-999999999999', '11111111-1111-1111-1111-111111111111', 'Great project');
+
+ROLLBACK;
+
+```

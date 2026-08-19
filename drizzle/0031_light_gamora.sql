@@ -1,0 +1,1 @@
+ALTER TABLE `studioInvestmentLearning` ADD `expectedInvestmentContribution` text;

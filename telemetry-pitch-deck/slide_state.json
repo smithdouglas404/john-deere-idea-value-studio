@@ -1,0 +1,122 @@
+{
+  "project_info": {
+    "title": "Telemetry for Tractors",
+    "created": 1786617924.091,
+    "last_updated": 1786618140.479,
+    "total_slides": 10
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "opportunity",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "market_signal",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "customer_impact",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "evidence_ledger",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "value_case",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "proof_sprint",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "specialists",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "decision_path",
+      "state": "edited",
+      "pageNum": 9
+    },
+    {
+      "id": "ask",
+      "state": "edited",
+      "pageNum": 10
+    }
+  ],
+  "outline": [
+    {
+      "id": "cover",
+      "title": "Telemetry for Tractors",
+      "summary": "A sponsor-owned, evidence-first proof pitch for converting connected-machine signals into informed service actions.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "opportunity",
+      "title": "Convert Machine Signals into Action",
+      "summary": "Frame the operational problem and qualitative cost-optimization hypothesis without claiming validated financial outcomes.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "market_signal",
+      "title": "The Market Signal Is Real",
+      "summary": "Summarize sourced precedent for connected-machine data and precision agriculture while preserving the business-case evidence gap.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "customer_impact",
+      "title": "A Clear Customer and Service Hypothesis",
+      "summary": "Show intended farmer, dealer/service, and ecosystem impact plus the customer validation required next.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "evidence_ledger",
+      "title": "Evidence Is Uneven by Design",
+      "summary": "Use the sourced dossier evidence-category counts to show strong operating precedent and open customer-validation gaps.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "value_case",
+      "title": "The Sponsor Defines the Value Boundary",
+      "summary": "Visualize sponsor-entered annual value range, midpoint, proof cost, and time to value as assumptions to validate.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "proof_sprint",
+      "title": "A Hackathon Should Prove, Not Perform",
+      "summary": "Define the proof-sprint outcomes, test boundaries, and pilot measures that turn a prototype into decision evidence.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "specialists",
+      "title": "Five Specialists Broaden the Evidence",
+      "summary": "Explain the five identity-redacted, cited, non-binding evaluators and human final authority.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "decision_path",
+      "title": "Evidence Before Escalation",
+      "summary": "Show the field-to-fund decision path from opportunity evidence to human-governed realization.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "ask",
+      "title": "Authorize a Bounded Proof Sprint",
+      "summary": "Close with the sponsor ask, accountable roles, and decision-ready evidence package definition.",
+      "image_plan": "Use a suitable image if needed"
+    }
+  ]
+}

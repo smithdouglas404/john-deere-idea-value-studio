@@ -1,0 +1,144 @@
+{
+  "project_info": {
+    "title": "Keep the crowd. Replace the contest.",
+    "created": 1785963783.666,
+    "last_updated": 1785963973.791,
+    "total_slides": 12
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "strategic_context",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "value_bottleneck",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "proposal",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "keep_replace",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "ai_role",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "interactive_demo",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "value_logic",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "activation",
+      "state": "edited",
+      "pageNum": 9
+    },
+    {
+      "id": "success",
+      "state": "edited",
+      "pageNum": 10
+    },
+    {
+      "id": "discussion",
+      "state": "edited",
+      "pageNum": 11
+    },
+    {
+      "id": "sources",
+      "state": "edited",
+      "pageNum": 12
+    }
+  ],
+  "outline": [
+    {
+      "id": "cover",
+      "title": "Keep the crowd. Replace the contest.",
+      "summary": "Introduce the AI-enabled idea-to-investment studio as a continuous alternative to traditional hackathons.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "strategic_context",
+      "title": "Deere already builds AI around practical customer value",
+      "summary": "Ground the concept in John Deere’s public AI, connected-operations, and innovation strategy.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "value_bottleneck",
+      "title": "The build is no longer the bottleneck. Decision-quality is.",
+      "summary": "Explain why faster generation and prototyping do not solve the value-tracking and funding-decision problem.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "proposal",
+      "title": "Introduce the Value Fieldbook",
+      "summary": "Present the four-stage model: Capture, Shape, Prove, and Decide.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "keep_replace",
+      "title": "Preserve participation. Change the unit of progress.",
+      "summary": "Contrast hackathon elements to retain with the value-tracked operating model that replaces them.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "ai_role",
+      "title": "AI accelerates the value work; people retain the judgment",
+      "summary": "Show responsible AI roles and human accountability across the operating model.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "interactive_demo",
+      "title": "Demonstration: visible value from the first signal",
+      "summary": "Walk through the experience of adding an idea, inspecting value logic, and advancing an investment gate.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "value_logic",
+      "title": "Make the value case early—and make it honest",
+      "summary": "Explain the initial value-range logic, evidence required, and decision-changing assumptions.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "activation",
+      "title": "Start small, learn fast, leave with an operating cadence",
+      "summary": "Outline an illustrative six-week activation that moves from alignment to a first decision gate.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "success",
+      "title": "Measure the pipeline, not just the participation",
+      "summary": "Define leading, decision, and outcome measures that demonstrate innovation value.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "discussion",
+      "title": "Choose the first field to cultivate",
+      "summary": "Close with discussion prompts and the recommended first decision.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "sources",
+      "title": "Sources and assumptions",
+      "summary": "List public context sources and clarify that sample metrics are illustrative placeholders.",
+      "image_plan": "Use a suitable image if needed"
+    }
+  ]
+}

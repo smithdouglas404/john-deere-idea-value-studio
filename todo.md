@@ -1,0 +1,47 @@
+# Project TODO
+
+- [x] Establish React 19 + Tailwind 4 + tRPC 11 + Drizzle ORM full-stack architecture.
+- [x] Implement core studio database schema and migration pipeline.
+- [x] Implement core tRPC router for campaign incubation, business cases, proof events, and human judging.
+- [x] Provision private GitHub challenge repositories under `Inflexcvi` organization and wire collaborator management.
+- [x] Integrate 10-lens Claude evidence agent and 5 specialist evaluation skills (UX/UI, Cloud Architecture, Security, Development Quality, Value & Feasibility) with identity-redacted evidence packets.
+- [x] Build tenant administration console for LLM routing, white-label branding, and international localization.
+- [x] Correct root routing so users land directly on the Innovation Portfolio main menu / home screen instead of an auto-redirect.
+- [x] Fix test suite and TypeScript compilation across all 129 tests.
+- [x] Update frontend review queue and tRPC router validation to enforce the confirmed **Yes / No / Undecided** voting model where feedback/rationale is strictly required for **No** and **Undecided**.
+- [x] Implement and verify an explicit opt-in private-repository audit setting plus named-repository authorization UI and tests.
+- [x] Add ZIP code-bundle evidence ingestion with bounded extraction, file-size/count limits, citations, and regression coverage.
+- [x] Complete repository lifecycle features: commit/tag snapshot binding to proof records, telemetry/forensics surfacing, archive/migration window, and admin deletion workflow.
+- [x] Run and document authenticated visual verification for the journey and community voting updates.
+- [x] Replace campaign root with visible Opportunity Marketplace featuring clickable widgets and detail modals.
+- [x] Implement Surface 1: Opportunity Marketplace and Review (discoverable widgets, full detail, documents, community comments/questions, Yes/No/Undecided voting with required rationale).
+- [x] Implement Surface 2: Owner Executive Decision Cockpit (community pulse, economics, document previews, preliminary rubric, questions, and advance/hold/decline/slate decision).
+- [x] Implement Surface 3: Hackathon Judge Cockpit (inherited summary, participant code/uploads, full specialist findings, citations, limitations, agent questions, human rubric, disagreement, and winner decision).
+- [x] Verify all three surfaces end-to-end in the browser and checkpoint the result.
+- [x] Build and verify unified Hackathon Judge Cockpit combining participant code/uploads with all 5 specialist Claude findings.
+- [x] Replace hardcoded repository metrics in EventJudgingWorkspace.tsx with real persisted proof/repository metadata.
+- [x] Render true specialist outputs with citations/limitations and remove fallback invented claims.
+- [x] Fix form submission preventDefault argument typo and run browser verification on the unified judge cockpit.
+- [x] Inspect git remote and commit current workspace state.
+- [x] Push changes to existing GitHub repository (`smithdouglas404/john-deere-idea-value-studio`).
+- [x] Inspect GitHub connector status via manus-config.
+- [x] Configure Git credential helper using the authenticated connector or token.
+- [x] Execute clean git push to smithdouglas404/john-deere-idea-value-studio.
+- [x] Upload core configuration, client, and project code to smithdouglas404/john-deere-idea-value-studio.
+- [x] Verify repository structure and confirm live destination.
+- [x] Add Dockerfile for Mac Docker Desktop builds.
+- [x] Add docker-compose.yml with application and persistent MySQL services.
+- [x] Add mac_setup_instructions.md with clone, environment, startup, and operations guidance.
+- [x] Save checkpoint f1a70a0e for the Mac Docker Desktop handoff package.
+- [x] Include patches directory and pnpm patch files in repository for Docker build.
+- [x] Synchronize docker-compose.yml and Dockerfile to GitHub so local clones receive them.
+- [x] Create docker-compose.yml and Dockerfile via GitHub web editor on main branch.
+- [x] Synchronize patches/wouter@3.7.1.patch to GitHub so Docker build finds it during pnpm install.
+- [x] Update Dockerfile to include COPY patches ./patches before pnpm install.
+- [x] Fix Dockerfile patch copying in GitHub repository.
+- [x] Update docker-compose.yml port mapping to 3001:3000 to resolve port 3000 conflict.
+- [x] Ensure Dockerfile COPY patches ./patches is committed to GitHub main.
+- [x] Verify raw GitHub Dockerfile includes COPY patches ./patches.
+- [x] Create a self-contained ZIP archive of the complete project for direct download.
+- [x] Rebuild clean handoff ZIP excluding sandbox internals.
+- [x] Deliver the ZIP attachment to the user.

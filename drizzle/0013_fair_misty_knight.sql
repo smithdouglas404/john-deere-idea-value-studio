@@ -1,0 +1,1 @@
+ALTER TABLE `scorecards` ADD `needsSecondaryReview` boolean DEFAULT false NOT NULL;

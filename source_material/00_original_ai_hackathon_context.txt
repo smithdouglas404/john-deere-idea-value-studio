@@ -1,0 +1,43 @@
+Traditional hackathons follow five main phases. AI hasn't eliminated these stages, but it has fundamentally changed what happens inside them, compressing execution time and shifting focus from basic coding to problem definition, validation, and commercial clarity.
+
+---
+
+### The 5 Phases of a Hackathon
+
+**1. Design & Strategy (Pre-Event)**
+
+* **Traditional Way:** Organizers spend weeks manually drafting problem statements, rules, judging rubrics, judging sheets, and participant onboarding kits.
+* **AI Shift:** AI tools auto-generate tailored challenge briefs, judging rubrics, and communication templates in minutes, reducing prep lead-time from weeks to days.
+
+**2. Team Formation & Ideation (Lead-Up)**
+
+* **Traditional Way:** Participants mingle in chaotic Slack/Discord channels or open rooms, pitching ideas on whiteboards to form impromptu teams.
+* **AI Shift:** Algorithmic team-matching tools pair individuals based on complementary skill sets and domain interests. AI acts as an ideation sparring partner, stress-testing hypotheses, refining scope, and synthesizing research before the clock even starts.
+
+**3. The Build / Runtime (The Main Event)**
+
+* **Traditional Way:** Teams spend 24–48 hours grinding out foundational boilerplate code, designing basic database schemas, wireframing, and wrestling with syntax errors.
+* **AI Shift:** "Vibecoding" and generative development tools (v0, Lovable, Cursor, Bolt) handle full-stack scaffolding, component generation, and boilerplate within hours. Development shifts from manual coding to orchestration and verification. Because building is so fast, teams spend the majority of their time on business logic, edge cases, and real-world validation.
+
+**4. Pitching & Evaluation**
+
+* **Traditional Way:** Teams pull together rushed, static slide decks at 3 AM while judges manually review dozens of pitches against paper forms.
+* **AI Shift:** Generative tools produce polished decks, interactive wireframes, and tailored demo videos. AI assistants assist judges by parsing technical submissions, highlighting novel implementations, and scoring baseline requirements instantly.
+
+**5. Post-Hackathon & Scaling**
+
+* **Traditional Way:** Winning prototypes often languish in GitHub repositories as "hackathon debt" because turning hacky code into enterprise-ready software requires starting from scratch.
+* **AI Shift:** Code conversion agents analyze the prototype, auto-generate unit tests, flag security vulnerabilities, and refactor the hackathon codebase into production-ready architecture.
+
+---
+
+### How AI Replaces "The Old-Fashioned Way"
+
+The opportunity isn't just automating steps—it's **redefining the value bottleneck**.
+
+| Dimension | The Old-Fashioned Way | The AI-Accelerated Way |
+| --- | --- | --- |
+| **Primary Skill** | Technical syntax, fast coding, and rapid UI building. | System orchestration, context prompting, and sharp product judgment. |
+| **Non-Technical Access** | Dependent on engineers to realize any vision. | Non-technical contributors build full working prototypes directly. |
+| **Build Duration** | 24 to 48-hour marathons to get a working UI. | Compressed to 4 to 12-hour micro-hackathons ("Vibeathons"). |
+| **Evaluation Focus** | *"Did they manage to make it work?"* | *"Is the problem worth solving, and is the solution viable?"* |

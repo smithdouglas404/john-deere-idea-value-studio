@@ -1,0 +1,261 @@
+Below is a complete, runnable Python script using **Instructor** (which provides Pydantic validation and structured outputs on top of OpenAI/LLM clients) to execute the **Code Auditor** and **Claim Mismatch** workflow.
+
+This script uses `instructor` along with standard `pydantic` schemas to execute the two-phase pipeline deterministically.
+
+---
+
+### Prerequisites
+
+Install the required dependencies:
+
+```bash
+pip install instructor openai pydantic
+
+```
+
+Set your API key:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+
+```
+
+---
+
+### Python Script: `hackathon_audit_pipeline.py`
+
+```python
+import json
+import os
+from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field
+import instructor
+from openai import OpenAI
+
+# Initialize the Instructor client (wraps OpenAI for structured JSON extraction)
+client = instructor.from_openai(OpenAI())
+
+# =====================================================================
+# 1. PYDANTIC SCHEMAS (DATA CONTRACTS)
+# =====================================================================
+
+class ImplementationStatus(str, Enum):
+    REAL_LOGIC = "REAL_LOGIC"
+    MOCKED_DATA = "MOCKED_DATA"
+    EMPTY_STUB = "EMPTY_STUB"
+    NOT_FOUND = "NOT_FOUND"
+
+class VerificationStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    EXAGGERATED = "EXAGGERATED"
+    GHOST_CLAIM = "GHOST_CLAIM"
+
+class ClaimSource(str, Enum):
+    PITCH_DECK = "PITCH_DECK"
+    VIDEO_TRANSCRIPT = "VIDEO_TRANSCRIPT"
+    README = "README"
+
+# --- Phase 1: Code Auditor Schemas ---
+class TechnicalFinding(BaseModel):
+    feature_category: str = Field(..., description="e.g., Database / Vector Search, Auth, API Router")
+    implementation_status: ImplementationStatus
+    file_path: str = Field(..., description="Path to file where code resides")
+    line_numbers: str = Field(..., description="e.g., L42-L88")
+    evidence_snippet: str = Field(..., description="Short code snippet proving implementation state")
+
+class RepositorySummary(BaseModel):
+    primary_languages: List[str]
+    key_dependencies: List[str]
+    total_commits: int
+    bulk_commit_flag: bool = Field(..., description="True if >80% of code was pushed in a single commit")
+
+class CodeAuditorReport(BaseModel):
+    repository_summary: RepositorySummary
+    technical_findings: List[TechnicalFinding]
+    technical_execution_score: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0, 
+        description="0.0 = Broken/Empty, 0.5 = Heavy Mocks/UI only, 1.0 = Fully functional logic"
+    )
+
+# --- Phase 2: Claim Mismatch Schemas ---
+class CodeCitation(BaseModel):
+    file_path: Optional[str] = None
+    line_numbers: Optional[str] = None
+
+class ClaimAudit(BaseModel):
+    claim_source: ClaimSource
+    claimed_feature: str = Field(..., description="Feature claimed in presentation/video")
+    verification_status: VerificationStatus
+    code_citation: Optional[CodeCitation] = None
+    audit_rationale: str = Field(..., description="Explanation for status assignment")
+
+class ClaimMismatchReport(BaseModel):
+    claim_audits: List[ClaimAudit]
+    claim_integrity_score: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0, 
+        description="Calculated ratio of verified claims vs exaggerated/ghost claims"
+    )
+    audit_summary: str = Field(..., description="Executive summary of pitch vs code alignment")
+
+
+# =====================================================================
+# 2. AGENT EXECUTION FUNCTIONS
+# =====================================================================
+
+def run_code_auditor(codebase_context: str) -> CodeAuditorReport:
+    """Phase 1: Analyzes raw repo inspect dumps to build a factual codebase audit."""
+    
+    system_prompt = (
+        "You are an expert static analysis security and code inspection agent evaluating a hackathon submission.\n"
+        "YOUR GOAL: Inspect the repository context to determine technical completeness, verify actual implementation "
+        "vs pre-built boilerplate or mocks, check git history, and build an inventory of technical capabilities.\n"
+        "RULES:\n"
+        "1. NEVER assume a feature exists because it is named in a file. Verify actual logic vs static JSON mocks/stubs.\n"
+        "2. Provide exact file paths, line numbers, and evidence snippets for your findings."
+    )
+
+    report: CodeAuditorReport = client.chat.completions.create(
+        model="gpt-4o",
+        response_model=CodeAuditorReport,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Inspect the following codebase dump and produce an audit report:\n\n{codebase_context}"}
+        ],
+        temperature=0.1
+    )
+    return report
+
+
+def run_claim_mismatch_agent(pitch_claims_text: str, code_report: CodeAuditorReport) -> ClaimMismatchReport:
+    """Phase 2: Compares pitch claims against Phase 1 ground-truth code audit."""
+    
+    system_prompt = (
+        "You are an unbiased Hackathon Audit & Verification Agent.\n"
+        "YOUR RESPONSIBILITY: Evaluate the truthfulness of a project's pitch claims against verified code evidence.\n\n"
+        "EVALUATION CRITERIA:\n"
+        "- SUPPORTED: Backed by actual working code implementation.\n"
+        "- EXAGGERATED: Exists as a feature but relies on hardcoded mocks, static JSON, or incomplete logic.\n"
+        "- GHOST_CLAIM: Pitched as operational, but ZERO evidence exists in code or dependencies.\n\n"
+        "CRITICAL DIRECTIVES:\n"
+        "- Do NOT give points for slick slides or eloquent writing.\n"
+        "- Be objective and provide clear citations linking back to code files."
+    )
+
+    user_payload = f"""
+    === PITCH CLAIMS INVENTORY ===
+    {pitch_claims_text}
+
+    === VERIFIED CODE AUDIT REPORT (GROUND TRUTH) ===
+    {code_report.model_dump_json(indent=2)}
+    """
+
+    report: ClaimMismatchReport = client.chat.completions.create(
+        model="gpt-4o",
+        response_model=ClaimMismatchReport,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_payload}
+        ],
+        temperature=0.1
+    )
+    return report
+
+
+def calculate_final_score(tech_score: float, integrity_score: float, originality_score: float = 0.8, pitch_score: float = 0.8) -> float:
+    """Calculates weighted total score deterministically in Python (avoids LLM math errors)."""
+    weights = {
+        "technical": 0.35,
+        "integrity": 0.25,
+        "originality": 0.20,
+        "pitch": 0.20
+    }
+    
+    final_score = (
+        (tech_score * weights["technical"]) +
+        (integrity_score * weights["integrity"]) +
+        (originality_score * weights["originality"]) +
+        (pitch_score * weights["pitch"])
+    )
+    return round(final_score * 10, 2)  # Normalized to 10-point scale
+
+
+# =====================================================================
+# 3. WORKFLOW PIPELINE RUNNER & MOCK TEST DATA
+# =====================================================================
+
+if __name__ == "__main__":
+    # --- Sample Input 1: Raw Codebase Inspection Context ---
+    sample_codebase = """
+    REPO: team-neural/omnivoice
+    COMMITS: 12 total. Commit #12 pushed 95% of lines 5 mins before deadline.
+    MANIFEST: package.json [fastapi, python-dotenv, requests]
+    
+    FILE: backend/api/search.py
+    L40: @app.get("/search")
+    L41: def search_vectors(query: str):
+    L42:     # TODO: Connect to Qdrant vector database
+    L43:     # Returning mock response for demo
+    L44:     return [{"id": "vec_01", "score": 0.99, "text": "Sample text"}]
+
+    FILE: backend/ws/stream.py
+    L10: @app.websocket("/ws/audio")
+    L11: async def handle_audio_stream(websocket: WebSocket):
+    L12:     await websocket.accept()
+    L13:     while True:
+    L14:         data = await websocket.receive_bytes()
+    L15:         # Process audio chunk buffer
+    L16:         process_chunk(data)
+    """
+
+    # --- Sample Input 2: Extracted Pitch Deck & Video Claims ---
+    sample_pitch_claims = """
+    Source: Pitch Deck - Slide 3
+    Claim: Real-time sub-50ms Vector Search over 100k embeddings using Qdrant.
+
+    Source: Demo Video Transcript - 01:12
+    Claim: Live WebSocket audio streaming ingestion pipeline processing incoming voice buffers.
+
+    Source: README.md
+    Claim: Fully automated AI billing and subscription management integration with Stripe.
+    """
+
+    print("🚀 [Step 1/3] Running Code Auditor Agent...")
+    code_audit_result = run_code_auditor(sample_codebase)
+    print("✅ Code Audit Complete.")
+    print(f"   Technical Execution Score: {code_audit_result.technical_execution_score}")
+    print(f"   Bulk Commit Flag: {code_audit_result.repository_summary.bulk_commit_flag}\n")
+
+    print("🚀 [Step 2/3] Running Claim Mismatch Agent...")
+    mismatch_result = run_claim_mismatch_agent(sample_pitch_claims, code_audit_result)
+    print("✅ Mismatch Analysis Complete.")
+    print(f"   Claim Integrity Score: {mismatch_result.claim_integrity_score}\n")
+
+    print("🚀 [Step 3/3] Computing Final Deterministic Score...")
+    final_score = calculate_final_score(
+        tech_score=code_audit_result.technical_execution_score,
+        integrity_score=mismatch_result.claim_integrity_score
+    )
+
+    # --- Output Final Consolidated Report ---
+    print("==================================================")
+    print(f"  FINAL HACKATHON SCORE: {final_score} / 10.0")
+    print("==================================================\n")
+    
+    print("=== CLAIM AUDIT BREAKDOWN ===")
+    for audit in mismatch_result.claim_audits:
+        print(f"• [{audit.verification_status.value}] {audit.claimed_feature}")
+        print(f"  Source: {audit.claim_source.value}")
+        print(f"  Rationale: {audit.audit_rationale}")
+        if audit.code_citation and audit.code_citation.file_path:
+            print(f"  Citation: {audit.code_citation.file_path}:{audit.code_citation.line_numbers}")
+        print()
+
+    print("=== AUDIT SUMMARY ===")
+    print(mismatch_result.audit_summary)
+
+```
