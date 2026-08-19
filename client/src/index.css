@@ -1,0 +1,216 @@
+/* STYLE REMINDER — Value Fieldbook: light oat-paper canvas, agricultural green authority, harvest-yellow signals, and editorial restraint. */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-serif: "DM Serif Display", serif;
+}
+
+:root {
+  --radius: 0.25rem;
+  --background: oklch(0.97 0.008 94);
+  --foreground: oklch(0.27 0.032 148);
+  --card: oklch(0.992 0.003 95);
+  --card-foreground: oklch(0.27 0.032 148);
+  --popover: oklch(0.992 0.003 95);
+  --popover-foreground: oklch(0.27 0.032 148);
+  --primary: oklch(0.32 0.073 153);
+  --primary-foreground: oklch(0.98 0.006 98);
+  --secondary: oklch(0.94 0.02 102);
+  --secondary-foreground: oklch(0.32 0.05 148);
+  --muted: oklch(0.94 0.01 101);
+  --muted-foreground: oklch(0.5 0.02 145);
+  --accent: oklch(0.88 0.12 96);
+  --accent-foreground: oklch(0.27 0.032 148);
+  --destructive: oklch(0.58 0.2 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.88 0.015 103);
+  --input: oklch(0.88 0.015 103);
+  --ring: oklch(0.45 0.09 148);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { background: #f7f5ed; }
+  body { @apply bg-background text-foreground; font-family: "IBM Plex Sans", sans-serif; }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [type="button"]:not(:disabled), [type="submit"]:not(:disabled), [type="reset"]:not(:disabled), a[href], select:not(:disabled), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled) { @apply cursor-pointer; }
+  ::selection { background: #f8d41d; color: #173d2a; }
+}
+
+@layer components {
+  .field-noise { background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E"); mix-blend-mode: multiply; }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+
+/* Field-to-fund system reinforcement: evidence ledger → working canvas → decision rail. */
+main { position: relative; }
+main::before {
+  content: "";
+  position: fixed;
+  inset: 74px 0 0 246px;
+  pointer-events: none;
+  opacity: .32;
+  background: repeating-radial-gradient(ellipse 470px 240px at 88% 27%, transparent 0 29px, rgba(27,94,58,.10) 30px 31px, transparent 32px 51px);
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+main > div { position: relative; z-index: 1; }
+
+/* Seed-to-signal mark and compressed custom-feeling experience wordmark. */
+main > div > aside > div:first-child > div:first-child { width: 48px; height: 48px; flex: 0 0 48px; }
+main > div > aside > div:first-child > div:first-child img { width: 39px !important; height: 39px !important; }
+main > div > aside > div:first-child > div:nth-child(2) > p:first-child {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -1.05px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  transform: scaleX(.88);
+  transform-origin: left center;
+}
+main > div > aside > div:first-child > div:nth-child(2) > p:first-child::after { content: " / FIELD"; color: #607867; }
+
+/* Make decision architecture explicit rather than dashboard-like. */
+[class*="xl:grid-cols"] { position: relative; }
+[class*="xl:grid-cols"] > div:first-child { position: relative; padding-top: 35px; }
+[class*="xl:grid-cols"] > div:first-child::before {
+  content: "01 / EVIDENCE LEDGER";
+  position: absolute;
+  left: 18px;
+  top: 12px;
+  color: #58715d;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .13em;
+}
+[class*="xl:grid-cols"] > aside { position: relative; padding-top: 47px; border-top: 4px solid #f8d41d; }
+[class*="xl:grid-cols"] > aside::before {
+  content: "03 / INVESTMENT DECISION RAIL";
+  position: absolute;
+  left: 20px;
+  top: 17px;
+  color: #f8d41d;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+[class*="xl:grid-cols"] > aside button:last-child {
+  border-color: #f8d41d !important;
+  background: #f8d41d !important;
+  color: #173d2a !important;
+}
+
+/* The dossier is the canonical research readout; retain only the consent/action controls below it. */
+.opportunity-research-dossier + section > article:first-child > div.mt-5.border-t { display: none; }
+
+/* Decision-support language must remain readable at a normal desktop review distance. */
+.value-case-cockpit [class*="text-[8px]"] { font-size: 11px !important; line-height: 1.35 !important; }
+.value-case-cockpit [class*="text-[9px]"] { font-size: 12px !important; line-height: 1.4 !important; }
+.value-case-cockpit [class*="text-[10px]"] { font-size: 12px !important; line-height: 1.45 !important; }
+.value-case-cockpit [class*="text-[11px]"] { font-size: 13px !important; line-height: 1.5 !important; }
+.value-case-cockpit [class*="text-[12px]"] { font-size: 14px !important; line-height: 1.55 !important; }
+
+/* Major proof and realization workspaces keep evidence, interpretation, and decision controls visibly distinct. */
+.fieldbook-proof-zones > article,
+.fieldbook-realization-zones > article { position: relative; padding-top: 3.35rem; }
+.fieldbook-proof-zones > article:first-child { border-top: 3px solid #1b5e3a; }
+.fieldbook-proof-zones > article:first-child::before,
+.fieldbook-realization-zones > article:first-child::before {
+  content: "01 / EVIDENCE LEDGER";
+}
+.fieldbook-proof-zones > article:nth-child(2) { border-top: 3px solid #73916e; }
+.fieldbook-proof-zones > article:nth-child(2)::before { content: "02 / INTERPRETATION LOOP"; }
+.fieldbook-realization-zones > article:first-child { border-top: 3px solid #1b5e3a; }
+.fieldbook-realization-zones > article:nth-child(2) { border-top: 3px solid #c89412; }
+.fieldbook-realization-zones > article:nth-child(2)::before { content: "03 / DECISION RAIL"; color: #876e16; }
+.fieldbook-proof-zones > article::before,
+.fieldbook-realization-zones > article::before {
+  position: absolute;
+  left: 20px;
+  top: 16px;
+  color: #58715d;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .13em;
+}
+
+/* Zone material is functional: contour density communicates the kind of work in progress, not a fabricated score. */
+.fieldbook-proof-zones > article:first-child,
+.fieldbook-realization-zones > article:first-child {
+  background-image: repeating-radial-gradient(ellipse 132px 76px at 102% -5%, transparent 0 17px, rgba(27,94,58,.12) 18px 19px, transparent 20px 30px);
+}
+.fieldbook-proof-zones > article:nth-child(2) {
+  background-image: repeating-radial-gradient(ellipse 120px 74px at 102% -4%, transparent 0 16px, rgba(96,120,103,.14) 17px 18px, transparent 19px 29px);
+}
+.fieldbook-realization-zones > article:nth-child(2) {
+  background-image: repeating-radial-gradient(ellipse 136px 78px at 102% -4%, transparent 0 16px, rgba(200,148,18,.20) 17px 18px, transparent 19px 30px);
+}
+.fieldbook-proof-zones > article:nth-child(2) h2,
+.fieldbook-realization-zones > article:nth-child(2) h2 { max-width: 82%; }
+
+/* Signal Harvest is reserved for readiness, movement, and headline value—not low-confidence warnings. */
+svg circle[stroke="#c89412"] { stroke: #607867; }
+
+@media (max-width: 1023px) {
+  main::before { inset: 74px 0 0 0; }
+}
+
+/* Clean lifecycle dark mode: preserve the Value Fieldbook hierarchy while raising contrast on paper surfaces. */
+.dark html,
+html.dark { background: #111a14; }
+.dark body { background: #111a14; color: #e7efe5; }
+.dark main { background-color: #111a14 !important; color: #e7efe5; }
+.dark main [class*="bg-[#f7f5ed]"] { background-color: #111a14 !important; }
+.dark main [class*="bg-[#fbfaf6]"] { background-color: #18251d !important; }
+.dark main [class*="bg-[#eef2eb]"] { background-color: #203126 !important; }
+.dark main [class*="bg-white"] { background-color: #1b2b21 !important; }
+.dark main [class*="text-[#213126]"],
+.dark main [class*="text-[#173d2a]"],
+.dark main [class*="text-[#1b5e3a]"] { color: #e7efe5 !important; }
+.dark main [class*="text-[#526456]"],
+.dark main [class*="text-[#58675b]"],
+.dark main [class*="text-[#4f6052]"],
+.dark main [class*="text-[#647465]"],
+.dark main [class*="text-[#657366]"],
+.dark main [class*="text-[#718075]"],
+.dark main [class*="text-[#708072]"] { color: #bfd0c1 !important; }
+.dark main [class*="border-[#d9ded2]"],
+.dark main [class*="border-[#dbe1d8]"],
+.dark main [class*="border-[#cbd6c8]"],
+.dark main [class*="border-[#cbd9c8]"] { border-color: #3e5745 !important; }
+.dark main input,
+.dark main textarea,
+.dark main select { background-color: #1b2b21 !important; color: #e7efe5 !important; border-color: #48614d !important; }
+.dark main input::placeholder,
+.dark main textarea::placeholder { color: #91a796 !important; }
