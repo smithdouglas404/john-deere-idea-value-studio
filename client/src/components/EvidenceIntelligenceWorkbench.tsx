@@ -1,0 +1,24 @@
+import { Files, GitFork, Network, Radar, Scale } from "lucide-react";
+
+type Result = Record<string, unknown>;
+type ItemRecord = Record<string, unknown>;
+const records = (value: unknown) => Array.isArray(value) ? value.filter(item => item && typeof item === "object") as ItemRecord[] : [];
+const references = (value: unknown) => Array.isArray(value) ? value.filter(item => typeof item === "string").join(" · ") : "No cited reference returned.";
+
+export function EvidenceIntelligenceWorkbench({ result }: { result: Result }) {
+  const multimodal = records(result.multiModalProofReview);
+  const graph = records(result.evidenceGraph);
+  const deliberation = records(result.crossSkillDeliberation);
+  const market = records(result.marketChallenge);
+  const stress = records(result.valueCaseStressTest);
+  const populated = multimodal.length + graph.length + deliberation.length + market.length + stress.length;
+  return <details open className="mt-5 border border-[#c6d4c2] bg-[#f7faf3]"><summary className="cursor-pointer px-4 py-3 text-[9px] font-bold uppercase tracking-[.12em] text-[#1b5e3a]">Evidence intelligence: proof review, claim graph, deliberation, market challenge, and stress test</summary><div className="border-t border-[#d7ddd0] p-4">{!populated ? <p className="text-[11px] leading-5 text-[#647066]">This is a legacy evidence brief. Create a refreshed preliminary brief to populate the five current evidence-intelligence capabilities from the authorized packet.</p> : <div className="grid gap-4 xl:grid-cols-2"><Capability icon={Files} title="Multi-Modal Proof Review" subtitle="Authorized repository, demo, video, deck, and technical-document evidence checked together.">{multimodal.map((item, index) => <EvidenceItem key={index} title={`${String(item.modality || "artifact").replace(/_/g, " ")} · ${item.available ? "present" : "missing"}`} lines={[String(item.evidence || ""), `Requirement linkage: ${String(item.requirementCoverage || "unavailable")}`, `Next request: ${String(item.nextRequest || "")}`]} refs={references(item.references)} />)}</Capability><Capability icon={Network} title="Evidence Graph" subtitle="Claims linked to supplied evidence; unsupported claims remain visible.">{graph.map((item, index) => <EvidenceItem key={index} title={`${String(item.support || "missing")} · ${String(item.sourceCount || 0)} sources`} lines={[String(item.claim || "")]} refs={references(item.references)} />)}</Capability><Capability icon={GitFork} title="Cross-Skill Deliberation" subtitle="Agreement, conflict, uncertainty, and the evidence that resolves it.">{deliberation.map((item, index) => <EvidenceItem key={index} title={String(item.topic || "Evidence topic")} lines={[`Agreement: ${String(item.agreement || "")}`, `Conflict: ${String(item.conflict || "")}`, `Uncertainty: ${String(item.uncertainty || "")}`, `Need: ${String(item.evidenceNeeded || "")}`]} refs={references(item.references)} />)}</Capability><Capability icon={Radar} title="Market Challenge" subtitle="Novelty, alternatives, adoption, and customer-value assumptions tested against cited research.">{market.map((item, index) => <EvidenceItem key={index} title={`${String(item.dimension || "market").replace(/_/g, " ")} · ${String(item.evidenceStatus || "missing")}`} lines={[String(item.assessment || ""), `Next test: ${String(item.nextTest || "")}`]} refs={references(item.references)} />)}</Capability><Capability icon={Scale} title="Value-Case Stress Test" subtitle="Sponsor assumptions challenged without invented savings, revenue, or ROI.">{stress.map((item, index) => <EvidenceItem key={index} title={String(item.assumption || "Assumption")} lines={[`Condition: ${String(item.condition || "")}`, `Consequence: ${String(item.consequence || "")}`, `Evidence needed: ${String(item.evidenceNeeded || "")}`]} refs={references(item.references)} />)}</Capability></div>}</div></details>;
+}
+
+function Capability({ icon: Icon, title, subtitle, children }: { icon: typeof Network; title: string; subtitle: string; children: React.ReactNode }) {
+  return <article className="border border-[#cbd8c8] bg-white p-4"><div className="flex items-center gap-2 text-[#1b5e3a]"><Icon className="h-4 w-4" /><p className="text-[9px] font-bold uppercase tracking-[.11em]">{title}</p></div><p className="mt-2 text-[10px] leading-4 text-[#647066]">{subtitle}</p><div className="mt-4 space-y-3">{children}</div></article>;
+}
+
+function EvidenceItem({ title, lines, refs }: { title: string; lines: string[]; refs: string }) {
+  return <div className="border-l-2 border-[#dbe7d7] pl-3"><p className="text-[10px] font-bold text-[#314837]">{title}</p>{lines.filter(Boolean).map((line, index) => <p key={index} className="mt-1 text-[10px] leading-4 text-[#56655a]">{line}</p>)}<p className="mt-1 text-[9px] leading-4 text-[#758077]">{refs}</p></div>;
+}

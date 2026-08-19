@@ -1,0 +1,5 @@
+type Assessment = { stance: "go" | "hold" | "no_go"; valuationScore: number; likes: string; improvements: string; rationale: string };
+
+export function InheritedCrowdContext({ assessments }: { assessments: Assessment[] }) {
+  return <div className="mt-3 border-t border-[#e1e6dd] pt-3"><p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#6f7e70]">Inherited crowd context · advisory</p>{assessments.length ? <div className="mt-2 space-y-2">{assessments.map((assessment, index) => <div key={index} className="border-l-2 border-[#d5b620] pl-3 text-xs leading-5 text-[#526456]"><p className="font-bold uppercase tracking-[.1em] text-[#1b5e3a]">{assessment.stance === "no_go" ? "No-go" : assessment.stance} · confidence {assessment.valuationScore}/5</p><p><b>Support:</b> {assessment.likes}</p><p><b>Improve:</b> {assessment.improvements}</p><p><b>Rationale:</b> {assessment.rationale}</p></div>)}</div> : <p className="mt-2 text-xs leading-5 text-[#657366]">No community assessment was recorded before selection. Judges may use the original case and submitted proof; this record does not invent a crowd view.</p>}</div>;
+}

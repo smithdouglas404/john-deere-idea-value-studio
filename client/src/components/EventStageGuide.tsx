@@ -1,0 +1,21 @@
+import { ArrowRight, ClipboardCheck, FileCheck2, Gavel, Lightbulb, Rocket, UsersRound } from "lucide-react";
+import { Link } from "wouter";
+
+type EventStageGuideProps = { hackathonId: number; opportunityId: number | null; status: string; projectId: number | null; projectSubmitted: boolean; canAdminister: boolean; registrationRole: string | null };
+
+const statusLabel: Record<string, string> = { draft: "Designing the proof", registration_open: "Mobilizing the proof", hacking_active: "Evidence is being built", judging_active: "Human review is active", completed: "Decision continuation" };
+
+export function EventStageGuide({ hackathonId, opportunityId, status, projectId, projectSubmitted, canAdminister, registrationRole }: EventStageGuideProps) {
+  const evidenceHref = projectId ? `/submission-evidence?project=${projectId}` : `#mobilize-proof`;
+  const current = canAdminister ? { label: "Shape the evidence-backed event", href: "#organizer-copilot", detail: "Use the Organizer Copilot to draft and explicitly adopt the proof design." } : !projectId ? { label: "Mobilize a proof team", href: "#mobilize-proof", detail: "Register, form or join a team, then connect the proof project." } : !projectSubmitted ? { label: "Complete traceable evidence", href: evidenceHref, detail: "Submit repository, demo, video, or pitch evidence for the proof record." } : { label: "Review cited evidence", href: `/judging?project=${projectId}`, detail: "Open the cited review record; human reviewers own the final score." };
+  const stages = [
+    { number: "01", label: "Value case", href: opportunityId ? `/opportunities/${opportunityId}` : "/workspace", icon: Lightbulb, complete: Boolean(opportunityId) },
+    { number: "02", label: "Design proof", href: canAdminister ? "#organizer-copilot" : "#proof-design", icon: Rocket, complete: Boolean(status && status !== "draft") },
+    { number: "03", label: "Mobilize", href: "#mobilize-proof", icon: UsersRound, complete: Boolean(projectId) },
+    { number: "04", label: "Evidence", href: evidenceHref, icon: FileCheck2, complete: projectSubmitted },
+    { number: "05", label: "Human review", href: canAdminister ? "/reviewer-calibration" : projectId ? `/judging?project=${projectId}` : "/reviewer-calibration", icon: Gavel, complete: status === "completed" },
+    { number: "06", label: "Realize", href: "/realization", icon: ClipboardCheck, complete: false },
+  ];
+  const StepLink = ({ href, children, className }: { href: string; children: React.ReactNode; className: string }) => href.startsWith("#") ? <a href={href} className={className}>{children}</a> : <Link href={href} className={className}>{children}</Link>;
+  return <section className="mt-5 border border-[#b9cdb8] bg-[#f1f4ed] p-4 md:p-5"><div className="grid gap-4 xl:grid-cols-[.9fr_1.1fr]"><div className="border border-[#c8d7c5] bg-[#fffef9] p-4"><p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#4f674c]">Current proof stage</p><p className="mt-2 font-serif text-[25px] leading-6 text-[#1b3829]">{statusLabel[status] || "Proof work in motion"}</p><p className="mt-2 text-[11px] leading-5 text-[#5b6a60]">{current.detail}</p><StepLink href={current.href} className="mt-4 inline-flex min-h-9 items-center gap-2 bg-[#173d2a] px-3 text-[9px] font-bold uppercase tracking-[.1em] text-white">{current.label}<ArrowRight className="h-3.5 w-3.5" /></StepLink><p className="mt-3 text-[9px] uppercase tracking-[.1em] text-[#758077]">Your role: {registrationRole || (canAdminister ? "organizer" : "not registered")}</p></div><div className="grid gap-px border border-[#c8d7c5] bg-[#c8d7c5] sm:grid-cols-3">{stages.map(stage => { const Icon = stage.icon; return <StepLink key={stage.number} href={stage.href} className={`min-h-24 bg-[#f7f8f2] p-3 hover:bg-white ${stage.complete ? "bg-[#e9f1e8]" : ""}`}><div className="flex items-center justify-between"><span className="text-[9px] font-bold tracking-[.12em] text-[#6c7e6c]">{stage.number}</span><Icon className={`h-3.5 w-3.5 ${stage.complete ? "text-[#1b5e3a]" : "text-[#8a9b87]"}`} /></div><p className="mt-4 text-[11px] font-bold text-[#1b3829]">{stage.label}</p><p className="mt-1 text-[8px] font-bold uppercase tracking-[.1em] text-[#69786c]">{stage.complete ? "Linked" : "Open"}</p></StepLink>;})}</div></div></section>;
+}

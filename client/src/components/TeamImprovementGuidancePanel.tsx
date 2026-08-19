@@ -1,0 +1,18 @@
+import { Lightbulb, ListChecks, MessageCircleQuestion, Sparkles } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+
+function referenceList(value: unknown) {
+  return Array.isArray(value) ? value.filter(item => typeof item === "string").join(" · ") : "No citation reference returned.";
+}
+
+export function TeamImprovementGuidancePanel({ projectId }: { projectId: number }) {
+  const guidance = trpc.judging.teamImprovementGuidance.useQuery({ projectId });
+  if (guidance.isLoading) return <section className="mt-6 border border-[#c6d4c2] bg-[#f5f8f0] p-5 text-[11px] text-[#647066]">Loading Team Improvement Coach guidance…</section>;
+  if (guidance.error) return <section className="mt-6 border border-[#e1c2bc] bg-[#fff5f2] p-5 text-[11px] text-[#9a3729]">Team Improvement Coach guidance is unavailable right now. Your submitted evidence and human-review routes remain available.</section>;
+  const data = guidance.data;
+  return <section className="mt-6 border border-[#c6d4c2] bg-[#f3f7ed] p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2 text-[#1b5e3a]"><Sparkles className="h-4 w-4" /><p className="text-[10px] font-bold uppercase tracking-[.14em]">Team Improvement Coach</p></div><h2 className="mt-2 font-serif text-[24px] text-[#1b3829]">Use the evidence brief to strengthen the proof.</h2><p className="mt-2 max-w-2xl text-[11px] leading-5 text-[#536254]">These are non-binding, cited improvement prompts from the current evidence brief. They are not human scores, judge notes, winner selection, or an investment decision.</p></div>{data?.available && <span className="border border-[#c4d4bf] bg-white px-3 py-2 text-[9px] font-bold uppercase tracking-[.1em] text-[#1b5e3a]">Evidence brief available</span>}</div>{!data?.available ? <p className="mt-5 border border-dashed border-[#c8d8c4] bg-white p-4 text-[11px] leading-5 text-[#758077]">Improvement guidance becomes available after cited specialist evidence has been synthesized. Continue to submit specific proof inputs and review the cited findings you can challenge.</p> : <div className="mt-5 grid gap-5 xl:grid-cols-3"><GuidanceList icon={ListChecks} title="Priority proof improvements" items={data.teamActions} render={item => <><b>{String(item?.priority || "Next")}: {String(item?.action || "Clarify the evidence.")}</b><p className="mt-1">{String(item?.why || "")}</p><small>{referenceList(item?.references)}</small></>} /><GuidanceList icon={Lightbulb} title="Innovation tests" items={data.innovationOpportunities} render={item => <><b>{String(item?.opportunity || "Opportunity")}</b><p className="mt-1">Test: {String(item?.test || "")}</p><small>{referenceList(item?.references)}</small></>} /><GuidanceList icon={MessageCircleQuestion} title="Questions to answer" items={data.humanQuestions} render={item => <p>{String(item)}</p>} /></div>}</section>;
+}
+
+function GuidanceList({ icon: Icon, title, items, render }: { icon: typeof ListChecks; title: string; items: unknown[]; render: (item: any) => React.ReactNode }) {
+  return <article className="border border-[#c9d7c5] bg-white p-4"><div className="flex items-center gap-2 text-[#1b5e3a]"><Icon className="h-4 w-4" /><p className="text-[9px] font-bold uppercase tracking-[.11em]">{title}</p></div><div className="mt-4 space-y-3">{items.length ? items.map((item, index) => <div key={index} className="border-l-2 border-[#d6e3d1] pl-3 text-[11px] leading-5 text-[#536254]">{render(item)}</div>) : <p className="text-[11px] leading-5 text-[#758077]">No additional prompts were returned for this section.</p>}</div></article>;
+}
